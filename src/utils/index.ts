@@ -39,6 +39,10 @@ class Utils {
     return momentDate.isoWeek();
   }
 
+  static getNextConfirmOrderWeekNumber(currentConfirmOrderWeek: number) {
+    return currentConfirmOrderWeek + 1 > 52 ? 1 : currentConfirmOrderWeek + 1;
+  }
+
   static dayOfTheWeek(d?: Date | string | Moment) {
     const getDate = getNetherlandsDate(d);
     const dayNumber = getDate.isoWeekday();
@@ -66,6 +70,22 @@ class Utils {
       lockdownDay,
     };
   };
+  static getNextSundayDaysCountISO = (isAfterLockdownDay: boolean = false) => {
+    const today = getNetherlandsDate();
+
+    if (isAfterLockdownDay) {
+      const nextSunday = today.add(1, "week").isoWeekday(7);
+      const diff = nextSunday.diff(getNetherlandsDate(), "days");
+
+      return diff <= 0 ? undefined : diff + 1;
+    } else {
+      const nextSunday = today.isoWeekday(7);
+      const diff = nextSunday.diff(getNetherlandsDate(), "days");
+
+      return diff <= 0 ? undefined : diff + 1;
+    }
+  };
+
   static sleep = (ms: number) => {
     return new Promise((resolve) => setTimeout(resolve, ms));
   };

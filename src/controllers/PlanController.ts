@@ -72,7 +72,7 @@ class PlanController {
       data: {
         ...value,
         user: { connect: { id: userId } },
-        confirmOrderWeek: isAfterLockdownDay ? currentWeek + 1 : currentWeek,
+        confirmOrderWeek: isAfterLockdownDay ? Utils.getNextConfirmOrderWeekNumber(currentWeek) : currentWeek,
       },
     });
 
@@ -173,9 +173,7 @@ class PlanController {
       throw new HttpError("No lockdown day found");
     }
 
-    const dayOfTheWeek = Utils.dayOfTheWeek();
-
-    const isAfterLockdownDay = lockdownDay <= dayOfTheWeek;
+    const { isAfterLockdownDay } = await Utils.afterLockdownDay(userId);
 
     const subscription = await stripe.subscriptions.create({
       customer: user.customer,
@@ -187,7 +185,7 @@ class PlanController {
       payment_behavior: "default_incomplete",
       payment_settings: { save_default_payment_method: "on_subscription" },
       expand: ["latest_invoice.payment_intent"],
-      trial_period_days: isAfterLockdownDay ? 14 - dayOfTheWeek : 7 - dayOfTheWeek,
+      trial_period_days: Utils.getNextSundayDaysCountISO(isAfterLockdownDay),
     });
 
     await prisma.userPlan.update({
@@ -281,9 +279,7 @@ class PlanController {
         throw new HttpError("No lockdown day found");
       }
 
-      const dayOfTheWeek = Utils.dayOfTheWeek();
-
-      const isAfterLockdownDay = lockdownDay <= dayOfTheWeek;
+      const { isAfterLockdownDay } = await Utils.afterLockdownDay(userId);
 
       await stripe.subscriptions.create({
         customer: user.customer,
@@ -295,7 +291,7 @@ class PlanController {
         payment_behavior: "default_incomplete",
         payment_settings: { save_default_payment_method: "on_subscription" },
         expand: ["latest_invoice.payment_intent"],
-        trial_period_days: isAfterLockdownDay ? 14 - dayOfTheWeek : 7 - dayOfTheWeek,
+        trial_period_days: Utils.getNextSundayDaysCountISO(isAfterLockdownDay),
       });
     } else {
       if (list.data.length == 0 || list?.data?.[0]?.items?.data?.length == 0) {
@@ -469,9 +465,10 @@ class PlanController {
     const updatedUserPlan = await prisma.userPlan.update({
       where: { id: userPlan.id },
       data: {
-        confirmOrderWeek: currentWeek + 1,
+        confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(currentWeek),
       },
     });
+    await this.paymentUtils.updateSubscription(user.id);
 
     res.status(200).send(this.apiResponse.success({ planOrder, userPlan: updatedUserPlan }, { message: "Plan order confirmed" }));
   };

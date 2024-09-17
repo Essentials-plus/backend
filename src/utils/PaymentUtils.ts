@@ -1,3 +1,4 @@
+import Stripe from "stripe";
 import { prisma } from "../configs/database";
 import { env } from "../env";
 import CalorieCalCulator from "./CalorieCalculator";
@@ -9,7 +10,14 @@ class PaymentUtils {
 
   private calorieCalCulator = new CalorieCalCulator();
 
-  async updateSubscription(userId: string) {
+  async updateSubscription(
+    userId: string,
+    {
+      subscriptionUpdateParams,
+    }: {
+      subscriptionUpdateParams?: Stripe.SubscriptionUpdateParams;
+    } = {},
+  ) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -48,7 +56,7 @@ class PaymentUtils {
 
     const items_id_list = list?.data?.[0]?.items?.data;
     const currency_type = env.CURRENCY_TYPE || "eur";
-    console.log({ price });
+
     const new_price = await stripe.prices.create({
       unit_amount: Math.round(price * 100),
       currency: currency_type,
@@ -62,6 +70,7 @@ class PaymentUtils {
       expand: ["latest_invoice"],
       items: [...items_id_list.map((v) => ({ id: v.id, deleted: true })), { price: new_price.id }],
       proration_behavior: "none",
+      ...subscriptionUpdateParams,
     });
   }
 }

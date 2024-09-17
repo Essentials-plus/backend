@@ -158,12 +158,34 @@ class UserController {
         data: { numberOfDays, mealsPerDay },
       });
     }
+    const currentWeekNumber = Utils.getCurrentWeekNumber();
 
-    if (weight && height && age && gender && activityLevel && goal) {
+    const isAlreadyPlaceAnOrderForThisWeek = await prisma.planOrder.findFirst({
+      where: {
+        week: currentWeekNumber,
+        plan: {
+          userId: findUser.id,
+        },
+      },
+    });
+
+    await prisma.userNextWeekPlanPrice.deleteMany({ where: { userId: findUser.id } });
+
+    const shouldUpdateUserSubscription = weight && height && age && gender && activityLevel && goal && !isAlreadyPlaceAnOrderForThisWeek;
+
+    if (shouldUpdateUserSubscription) {
       await this.paymentUtils.updateSubscription(id);
+    } else {
+      await prisma.userNextWeekPlanPrice.create({ data: { userId: findUser.id } });
     }
 
-    res.status(200).send(this.apiResponse.success(user, { message: "Gebruiker bijgewerkt" }));
+    res.status(200).send(
+      this.apiResponse.success(user, {
+        message: shouldUpdateUserSubscription
+          ? "Gebruiker bijgewerkt"
+          : "U heeft al een bestelling geplaatst voor deze week, dus uw nieuwe abonnementsprijs wordt vanaf de volgende week toegepast",
+      }),
+    );
   };
 
   // @GET="/" @Note: AdminRoute

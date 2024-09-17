@@ -7,11 +7,13 @@ import Utils, { getNetherlandsDate } from "../utils";
 import { reportCronJobError } from "../utils/AnalyticsReport";
 import CalorieCalCulator from "../utils/CalorieCalculator";
 import HttpError from "../utils/HttpError";
+import PaymentUtils from "../utils/PaymentUtils";
 import { sendEmailWithNodemailer } from "../utils/sender";
 import PlanValidator from "../validators/PlanValidator";
 
 export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isTriggeredManually?: boolean } = {}) => {
   const validators = new PlanValidator();
+  const paymentUtils = new PaymentUtils();
 
   try {
     const oneDayBehind = getNetherlandsDate().subtract(1, "day");
@@ -141,8 +143,9 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
 
         await prisma.userPlan.update({
           where: { id: userPlan.id },
-          data: { confirmOrderWeek: oneDayBehindWeekNumber + 1 },
+          data: { confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(oneDayBehindWeekNumber) },
         });
+        await paymentUtils.updateSubscription(user.id);
 
         successfulOrders++;
         await Utils.sleep(200);
