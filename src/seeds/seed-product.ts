@@ -1,4 +1,5 @@
 import { prisma } from "../configs/database";
+import Utils from "../utils";
 
 const products = [
   {
@@ -24,6 +25,7 @@ const seed = async () => {
           taxPercent: "TAX9",
         },
       });
+      await Utils.sleep(100);
     }
 
     console.log("Product created successfully");

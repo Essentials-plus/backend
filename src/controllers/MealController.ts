@@ -371,6 +371,7 @@ class MealController {
           sortOrder: ids.findIndex((categoryId) => categoryId === id),
         },
       });
+      await Utils.sleep(100);
     }
 
     res.status(201).send(this.apiResponse.success(null));
@@ -594,15 +595,17 @@ class MealController {
     const date = getNetherlandsDate().isoWeek(week).isoWeekday(user.zipCode?.lockdownDay!).endOf("day");
     const now = getNetherlandsDate();
 
-    console.log({ isBefore: now.isBefore(date), date: date.toString(), now: now.toString(), week: now.isoWeek() });
-
-    const isOrder = finalWeek === userOrderedWeek && userOrderedWeek === currentWeek && !isAlreadyPlaceAnOrderForThisWeek && now.isBefore(date);
+    const isOrder = finalWeek === userOrderedWeek && !isAlreadyPlaceAnOrderForThisWeek && now.isBefore(date);
 
     console.log({
-      currentWeek: finalWeek,
+      isBefore: now.isBefore(date),
+      date: date.toString(),
+      now: now.toString(),
+      week: now.isoWeek(),
+      finalWeek,
       userOrderedWeek,
       isAlreadyPlaceAnOrderForThisWeek,
-      isOrder: isOrder,
+      isOrder,
     });
 
     res.status(200).send(this.apiResponse.success(userMeals, { isOrder, orderHistory: isAlreadyPlaceAnOrderForThisWeek }));

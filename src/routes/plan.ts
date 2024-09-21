@@ -19,6 +19,8 @@ userRouter.post("/confirm", planController.confirmPlan);
 
 userRouter.delete("/cancel", planController.cancelPlan);
 
+// userRouter.post("/view-on-stripe", planController.viewPlanOnStripe);
+
 userRouter.post("/active", planController.reactivePlan);
 
 userRouter.put("/", planController.updatePlan);

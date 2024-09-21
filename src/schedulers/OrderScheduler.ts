@@ -42,6 +42,7 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
         },
         plan: {
           confirmOrderWeek: oneDayBehindWeekNumber,
+          status: "active",
         },
       },
       include: { plan: true, zipCode: true },
@@ -127,28 +128,48 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
 
         const mealsForTheWeek = await validators.mealForTheWeek.parseAsync(getDaysOfMeals);
 
-        await prisma.planOrder.create({
-          data: {
-            mealsForTheWeek,
-            week: oneDayBehindWeekNumber,
-            totalAmount: totalPrice,
-            shippingAmount,
-            plan: {
-              connect: {
-                id: userPlan.id,
+        // await prisma.planOrder.create({
+        //   data: {
+        //     mealsForTheWeek,
+        //     week: oneDayBehindWeekNumber,
+        //     totalAmount: totalPrice,
+        //     shippingAmount,
+        //     plan: {
+        //       connect: {
+        //         id: userPlan.id,
+        //       },
+        //     },
+        //   },
+        // })
+        // await prisma.userPlan.update({
+        //   where: { id: userPlan.id },
+        //   data: { confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(oneDayBehindWeekNumber) },
+        // });
+
+        await prisma.$transaction(async (tx) => {
+          await tx.userNextWeekPlanPrice.deleteMany({ where: { userId: user.id } });
+          await paymentUtils.updateSubscription(user.id);
+          await tx.planOrder.create({
+            data: {
+              mealsForTheWeek,
+              week: oneDayBehindWeekNumber,
+              totalAmount: totalPrice,
+              shippingAmount,
+              plan: {
+                connect: {
+                  id: userPlan.id,
+                },
               },
             },
-          },
+          });
+          await tx.userPlan.update({
+            where: { id: userPlan.id },
+            data: { confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(oneDayBehindWeekNumber) },
+          });
         });
-
-        await prisma.userPlan.update({
-          where: { id: userPlan.id },
-          data: { confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(oneDayBehindWeekNumber) },
-        });
-        await paymentUtils.updateSubscription(user.id);
 
         successfulOrders++;
-        await Utils.sleep(200);
+        await Utils.sleep(100);
       } catch (userError: any) {
         console.log(`Error processing user ${user.id}:`, userError?.message || "Something went wrong");
         await sendEmailWithNodemailer(

@@ -1,4 +1,5 @@
 import { prisma } from "../configs/database";
+import Utils from "../utils";
 
 async function createWeeklyMeals() {
   await prisma.weeklyMeal.deleteMany();
@@ -22,7 +23,7 @@ async function createWeeklyMeals() {
       });
       console.log(`Weekly meals created for week: ${week}, total meals added: ${mealsId.length}`);
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await Utils.sleep(100);
   }
 }
 

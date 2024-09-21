@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import Utils, { getNetherlandsDate } from ".";
 import { prisma } from "../configs/database";
 import { env } from "../env";
 import CalorieCalCulator from "./CalorieCalculator";
@@ -48,14 +49,47 @@ class PaymentUtils {
       customer: user.customer,
     });
 
+    const subscription = list.data[0];
+    const sub_id = subscription.id;
+
+    const { isAfterLockdownDay, currentWeek } = await Utils.afterLockdownDay(userId);
+    const alreadyPlaceAnOrderCount = await prisma.planOrder.count({
+      where: {
+        plan: {
+          userId: user.id,
+        },
+      },
+    });
+
+    if (subscription.trial_end && subscription.trial_end > Math.floor(Date.now() / 1000) && alreadyPlaceAnOrderCount <= 0) {
+      const daysToNextSunday = Utils.getNextSundayDaysCountISO(isAfterLockdownDay); // Your function that returns the number of trial days
+      const newTrialEnd = getNetherlandsDate().add(daysToNextSunday, "days").unix(); // Calculate the new trial end in UNIX timestamp
+
+      // Update the subscription with new trial end
+      await stripe.subscriptions.update(sub_id, {
+        trial_end: newTrialEnd,
+        proration_behavior: "none", // No proration for extending trial
+        ...subscriptionUpdateParams,
+      });
+
+      await prisma.userPlan.update({
+        where: {
+          userId: user.id,
+        },
+        data: {
+          confirmOrderWeek: isAfterLockdownDay ? Utils.getNextConfirmOrderWeekNumber(currentWeek) : currentWeek,
+        },
+      });
+
+      console.log(`Trial period extended by ${daysToNextSunday} days, new trial end:`, new Date(newTrialEnd * 1000));
+    }
+
     if (list.data.length == 0 || list?.data?.[0]?.items?.data?.length == 0) {
       throw new HttpError("Subscription not found", 404);
     }
 
-    const sub_id = list.data[0].id;
-
     const items_id_list = list?.data?.[0]?.items?.data;
-    const currency_type = env.CURRENCY_TYPE || "eur";
+    const currency_type = env.CURRENCY_TYPE;
 
     const new_price = await stripe.prices.create({
       unit_amount: Math.round(price * 100),
@@ -72,6 +106,7 @@ class PaymentUtils {
       proration_behavior: "none",
       ...subscriptionUpdateParams,
     });
+    await prisma.userNextWeekPlanPrice.deleteMany({ where: { userId: user.id } });
   }
 }
 

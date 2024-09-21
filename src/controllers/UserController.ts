@@ -91,7 +91,7 @@ class UserController {
     };
     const { numberOfDays, mealsPerDay, ...value }: ValueType = await this.validators.updateUser.parseAsync(req.body);
 
-    const findUser = await prisma.user.findUnique({ where: { id } });
+    const findUser = await prisma.user.findUnique({ where: { id }, include: { plan: true } });
     if (!findUser) throw new HttpError("Gebruiker niet gevonden met deze ID", 404);
 
     const { weight, height, age, gender, activityLevel, goal } = findUser;
@@ -169,14 +169,15 @@ class UserController {
       },
     });
 
-    await prisma.userNextWeekPlanPrice.deleteMany({ where: { userId: findUser.id } });
-
     const shouldUpdateUserSubscription = weight && height && age && gender && activityLevel && goal && !isAlreadyPlaceAnOrderForThisWeek;
 
-    if (shouldUpdateUserSubscription) {
-      await this.paymentUtils.updateSubscription(id);
-    } else {
-      await prisma.userNextWeekPlanPrice.create({ data: { userId: findUser.id } });
+    if (findUser.plan?.status !== "pending") {
+      if (shouldUpdateUserSubscription) {
+        await this.paymentUtils.updateSubscription(id);
+      } else {
+        await prisma.userNextWeekPlanPrice.deleteMany({ where: { userId: findUser.id } });
+        await prisma.userNextWeekPlanPrice.create({ data: { userId: findUser.id } });
+      }
     }
 
     res.status(200).send(

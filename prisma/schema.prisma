@@ -1,0 +1,541 @@
+//🧩Don't Edit this file.✨Generated in Wed Apr 17 2024 12:47:30 GMT+0600 (Bangladesh Standard Time)✨
+model Admin {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Meal {
+  id                String              @id @default(uuid())
+  meal              MealType
+  mealNumber        String // @Note: is it number or string?
+  mealName          String
+  preparationMethod PreparationMethod[]
+  cookingTime       String
+  tips              Tips[]
+  taxPercent        TaxPercent?
+  shortDescription  String?
+  label             String?
+  subLabel          String?
+  image             String
+
+  ingredients Ingredient[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  weeklyMeals WeeklyMeal[]
+
+  orderMeals OrderMeal[]
+}
+
+enum MealType {
+  breakfast
+  dinner
+  lunch
+  snacks1
+  snacks2
+  snacks3
+}
+
+model Ingredient {
+  id            String             @id @default(uuid())
+  name          String
+  quantity      Int
+  unit          IngredientUnitType
+  kcal          Int
+  proteins      Int
+  carbohydrates Int
+  fats          Int
+  fiber         Int
+  categoryId    String?
+
+  meals            Meal[]
+  category         IngredientCategory? @relation(fields: [categoryId], references: [id])
+  orderIngredients OrderIngredient[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model IngredientCategory {
+  id String @id @default(uuid())
+
+  name      String @unique
+  slug      String @unique
+  sortOrder Int    @default(autoincrement())
+
+  sngredients Ingredient[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum IngredientUnitType {
+  gr
+  ml
+  por
+  pc
+}
+
+model PreparationMethod {
+  id String @id @default(uuid())
+
+  label String
+
+  // relation
+  mealId String
+  meal   Meal   @relation(fields: [mealId], references: [id])
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  OrderMeal   OrderMeal? @relation(fields: [orderMealId], references: [id])
+  orderMealId String?
+}
+
+model Tips {
+  id String @id @default(uuid())
+
+  label String
+
+  // relation
+  mealId String
+  meal   Meal   @relation(fields: [mealId], references: [id])
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  OrderMeal   OrderMeal? @relation(fields: [orderMealId], references: [id])
+  orderMealId String?
+}
+
+model WeeklyMeal {
+  id    String @id @default(uuid())
+  week  Int    @unique
+  meals Meal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id String @id @default(uuid())
+
+  amount         Float
+  shippingAmount Float @default(0)
+
+  // couponId String?
+  // coupon   Coupon? @relation(fields: [couponId], references: [id])
+
+  coupon Json?
+
+  // products ProductCart[]
+
+  products Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  status OrderStatus @default(processing)
+}
+
+enum OrderStatus {
+  unpaid
+  processing
+  completed
+}
+
+model OrderMeal {
+  id String @id @default(uuid())
+
+  ingredients OrderIngredient[]
+
+  // meal   Meal   @relation(fields: [mealId], references: [id]) // meal 
+  // mealId String
+
+  meal              MealType
+  mealNumber        String // @Note: is it number or string?
+  mealName          String
+  preparationMethod PreparationMethod[]
+  cookingTime       String
+  tips              Tips[]
+
+  image String
+
+  kCalNeed Int
+
+  totalNeedOfKCal          Int
+  totalNeedOfProteins      Int
+  totalNeedOfCarbohydrates Int
+  totalNeedOfFats          Int
+  totalNeedOfFiber         Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mealsForTheWeek   MealsForTheWeek? @relation(fields: [mealsForTheWeekId], references: [id])
+  mealsForTheWeekId String?
+  Meal              Meal?            @relation(fields: [mealId], references: [id])
+  mealId            String?
+}
+
+model OrderIngredient {
+  id String @id @default(uuid())
+
+  totalNeed Int
+
+  // ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  // ingredientId String
+
+  name          String
+  quantity      Int
+  unit          IngredientUnitType
+  kcal          Int
+  proteins      Int
+  carbohydrates Int
+  fats          Int
+  fiber         Int
+
+  orderMeal   OrderMeal? @relation(fields: [orderMealId], references: [id])
+  orderMealId String?
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  Ingredient   Ingredient? @relation(fields: [ingredientId], references: [id])
+  ingredientId String?
+}
+
+model UserPlan {
+  id String @id @default(uuid())
+
+  numberOfDays Int
+  mealsPerDay  Int
+
+  confirmOrderWeek Int?
+
+  status PlanStatus @default(pending)
+
+  orders PlanOrder[]
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum PlanStatus {
+  pending
+  active
+  canceled
+}
+
+model PlanOrder {
+  id String @id @default(uuid())
+
+  week Int
+
+  mealsForTheWeek Json
+  totalAmount     Float
+  shippingAmount  Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plan   UserPlan? @relation(fields: [planId], references: [id])
+  planId String?
+
+  status PlanOrderStatus @default(confirmed)
+}
+
+enum PlanOrderStatus {
+  confirmed
+  delivered
+}
+
+enum TaxPercent {
+  TAX9  @map("9")
+  TAX21 @map("21")
+}
+
+model MealsForTheWeek {
+  id    String      @id @default(uuid())
+  day   Int
+  meals OrderMeal[]
+
+  // planOrder   PlanOrder? @relation(fields: [planOrderId], references: [id])
+  // planOrderId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id                   String      @id @default(uuid())
+  name                 String
+  slug                 String      @unique
+  description          String?
+  longDescription      String?
+  salePrice            Int?
+  regularPrice         Int?
+  images               String[]
+  stock                Int?
+  lowStockThreshold    Int?
+  categoryId           String?
+  faqs                 Json?
+  specs                Json?
+  showOnHomePageBanner Boolean     @default(false)
+  taxPercent           TaxPercent?
+
+  linkedProducts Product[] @relation("LinkedProducts")
+  linkedTo       Product?  @relation("LinkedProducts", fields: [linkedToId], references: [id])
+  linkedToId     String?
+
+  type           ProductType
+  productCart    ProductCart[]
+  attributes     ProductAttribute[]
+  attributeTerms ProductAttributeTerm[]
+  variations     ProductVariation[]
+  category       ProductCategory?       @relation(fields: [categoryId], references: [id])
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  lowStockNotifiedAt DateTime?
+
+  @@index([slug])
+}
+
+model ProductCategory {
+  id String @id @default(uuid())
+
+  name      String @unique
+  slug      String @unique
+  sortOrder Int    @default(autoincrement())
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum ProductType {
+  simple
+  variable
+}
+
+model ProductVariation {
+  id String @id @default(uuid())
+
+  termIds String[]
+
+  salePrice          Int?
+  regularPrice       Int?
+  stock              Int?
+  lowStockThreshold  Int?
+  image              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  lowStockNotifiedAt DateTime?
+
+  terms       ProductAttributeTerm[]
+  product     Product?               @relation(fields: [productId], references: [id])
+  productId   String?
+  ProductCart ProductCart[]
+}
+
+model ProductAttribute {
+  id    String                 @id @default(uuid())
+  name  String                 @unique
+  slug  String                 @unique
+  terms ProductAttributeTerm[]
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name, slug])
+}
+
+model ProductAttributeTerm {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  slug      String   @unique
+  sortOrder Int      @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attribute          ProductAttribute? @relation(fields: [productAttributeId], references: [id], onDelete: Cascade)
+  productAttributeId String?
+
+  product   Product? @relation(fields: [productId], references: [id])
+  productId String?
+
+  productVariation   ProductVariation? @relation(fields: [productVariationId], references: [id])
+  productVariationId String?
+
+  @@index([name, slug])
+}
+
+model ProductCart {
+  id String @id @default(uuid())
+
+  count Int @default(1)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  user      User?   @relation(fields: [userId], references: [id])
+  userId    String?
+
+  variationId String?
+  variation   ProductVariation? @relation(fields: [variationId], references: [id])
+
+  placed Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Coupon {
+  id String @id @default(uuid())
+
+  name String
+  code String @unique
+
+  type  CouponType
+  value Int
+
+  policy CouponPolicy
+
+  status CouponStatus @default(active)
+
+  users User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum CouponStatus {
+  active
+  inactive
+}
+
+enum CouponType {
+  percent
+  amount
+}
+
+enum CouponPolicy {
+  onetime
+  multiple
+}
+
+model Token {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  data      String
+  type      TokenType
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+enum TokenType {
+  ConfirmPayment
+  ConfirmEmail
+  ResetPassword
+}
+
+model User {
+  id                    String                 @id @default(uuid())
+  // personal info
+  name                  String
+  profile               String? // profile image
+  surname               String?
+  age                   Int?
+  gender                Gender?
+  weight                Int?
+  height                Int?
+  activityLevel         String?
+  goal                  String?
+  userNextWeekPlanPrice UserNextWeekPlanPrice?
+  // address info
+  address               String?
+  nr                    String?
+  city                  String?
+  addition              String?
+
+  // credentials
+  email     String     @unique
+  mobile    String?
+  password  String
+  zipCodeId String?
+  zipCode   ZipCode?   @relation(fields: [zipCodeId], references: [id])
+  status    UserStatus @default(active)
+
+  access UserAccess @default(product)
+
+  customer String? // stripe customer id
+
+  plan UserPlan?
+
+  carts ProductCart[]
+
+  coupons Coupon[]
+
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  orders    Order[]
+}
+
+enum UserAccess {
+  product
+  all
+}
+
+enum Gender {
+  male
+  female
+  others
+}
+
+enum UserStatus {
+  active
+  blocked
+}
+
+model ZipCode {
+  id          String @id @default(uuid())
+  lockdownDay Int
+  zipCode     String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+}
+
+model UserNextWeekPlanPrice {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

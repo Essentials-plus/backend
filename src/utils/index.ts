@@ -71,19 +71,15 @@ class Utils {
     };
   };
   static getNextSundayDaysCountISO = (isAfterLockdownDay: boolean = false) => {
-    const today = getNetherlandsDate();
+    const today = getNetherlandsDate().isoWeekday(); // Get the current ISO weekday (1 is Monday, 7 is Sunday)
+    let daysUntilNextSunday = 7 - today; // Calculate days until next Sunday
 
     if (isAfterLockdownDay) {
-      const nextSunday = today.add(1, "week").isoWeekday(7);
-      const diff = nextSunday.diff(getNetherlandsDate(), "days");
-
-      return diff <= 0 ? undefined : diff + 1;
-    } else {
-      const nextSunday = today.isoWeekday(7);
-      const diff = nextSunday.diff(getNetherlandsDate(), "days");
-
-      return diff <= 0 ? undefined : diff + 1;
+      // If lockdown day has passed, we want to skip the upcoming Sunday
+      daysUntilNextSunday += 7; // Add 7 more days to move to the 2nd next Sunday
     }
+
+    return daysUntilNextSunday;
   };
 
   static sleep = (ms: number) => {

@@ -5,10 +5,10 @@ import mealRoutes from "./meal";
 import orderRoutes from "./order";
 import planRoutes from "./plan";
 import productRoutes from "./product";
+import subscriptionRoutes from "./subscription";
 import uploadRoutes from "./upload";
 import userRoutes from "./user";
 import zipcodeRoutes from "./zipcode";
-import subscriptionRoutes from "./subscription";
 
 const authMiddleware = new AuthMiddleware();
 

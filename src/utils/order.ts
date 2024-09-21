@@ -69,6 +69,7 @@ export const prepareProductOrder = async (req: Request) => {
         );
       }
     }
+    await Utils.sleep(50);
   }
 
   let totalAmountToCharge = 0;

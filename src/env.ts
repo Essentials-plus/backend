@@ -25,6 +25,7 @@ export const envSchema = z.object({
 
   // Stripe
   STRIPE_SECRET_KEY: z.string(),
+  STRIPE_WEBHOOK_SECRET: z.string(),
   PRODUCT_ID: z.string(),
 
   // Calorie Price

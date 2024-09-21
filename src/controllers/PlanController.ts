@@ -156,7 +156,10 @@ class PlanController {
       throw new HttpError("Er is iets fout gegaan", 403);
     }
 
-    const currency_type = env.CURRENCY_TYPE || "eur";
+    const { isAfterLockdownDay } = await Utils.afterLockdownDay(userId);
+    console.log({ isAfterLockdownDay, day: Utils.getNextSundayDaysCountISO(isAfterLockdownDay) });
+
+    const currency_type = env.CURRENCY_TYPE;
 
     const stripe_price = await stripe.prices.create({
       unit_amount: Math.round(totalPrice * 100),
@@ -172,8 +175,6 @@ class PlanController {
     if (typeof lockdownDay === "undefined") {
       throw new HttpError("No lockdown day found");
     }
-
-    const { isAfterLockdownDay } = await Utils.afterLockdownDay(userId);
 
     const subscription = await stripe.subscriptions.create({
       customer: user.customer,
@@ -209,7 +210,23 @@ class PlanController {
 
     if (!user.plan) throw new HttpError("Plan niet gevonden", 404);
 
-    if (user.plan.status != "active") throw new HttpError("Abonnement niet geactiveerd", 404);
+    if (user.plan.status !== "active") throw new HttpError("Abonnement niet geactiveerd", 404);
+
+    const currentWeekNumber = Utils.getCurrentWeekNumber();
+
+    const isAlreadyPlaceAnOrderForThisWeek = await prisma.planOrder.findFirst({
+      where: {
+        week: currentWeekNumber,
+        plan: {
+          userId: user.id,
+        },
+      },
+    });
+    if (isAlreadyPlaceAnOrderForThisWeek)
+      throw new HttpError(
+        "U heeft een bestelling geplaatst voor deze week en de factuur is nog niet betaald. Wacht tot volgende week om uw abonnement op te zeggen.",
+        400,
+      );
 
     const list = await stripe.subscriptions.list({
       customer: user.customer,
@@ -228,6 +245,25 @@ class PlanController {
     await prisma.userPlan.update({ where: { id: user.plan.id }, data: { status: "canceled" } });
 
     res.status(200).send(this.apiResponse.success({ message: "Subscription canceled" }));
+  };
+
+  viewPlanOnStripe: RequestHandler = async (req, res) => {
+    try {
+      const userId = await this.validators.validateUUID.parseAsync(req.user?.id);
+
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { plan: true } });
+
+      if (!user || !user.customer) throw new HttpError("Gebruiker of klant niet gevonden ", 404);
+
+      const session = await stripe.billingPortal.sessions.create({
+        customer: user.customer,
+        return_url: env.CLIENT_URL,
+      });
+      res.send(this.apiResponse.success({ url: session.url }));
+    } catch (error) {
+      console.error("Error creating portal session:", error);
+      throw new Error("Unable to create portal session");
+    }
   };
 
   reactivePlan: RequestHandler = async (req, res) => {
@@ -262,7 +298,7 @@ class PlanController {
     price += env.SHIPPING_CHARGE;
 
     if (list.data.length == 0) {
-      const currency_type = env.CURRENCY_TYPE || "eur";
+      const currency_type = env.CURRENCY_TYPE;
 
       const stripe_price = await stripe.prices.create({
         unit_amount: Math.round(price * 100),
@@ -314,7 +350,7 @@ class PlanController {
 
       price += env.SHIPPING_CHARGE;
 
-      const currency_type = env.CURRENCY_TYPE || "eur";
+      const currency_type = env.CURRENCY_TYPE;
 
       const new_price = await stripe.prices.create({
         unit_amount: Math.round(price * 100),
@@ -387,6 +423,18 @@ class PlanController {
     const userPlan = user.plan;
 
     if (!userPlan) throw new HttpError("Plan niet gevonden");
+    if (userPlan.status !== "active") {
+      throw new HttpError("Uw abonnement is niet actief");
+    }
+
+    if (mealsForTheWeek.length !== userPlan.numberOfDays) {
+      throw new HttpError("Er is iets fout gegaan. Vernieuw de pagina en probeer het opnieuw.");
+    }
+    for (const mealForTheWeek of mealsForTheWeek) {
+      if (mealForTheWeek.meals.length !== userPlan.mealsPerDay) {
+        throw new HttpError("Er is iets fout gegaan. Vernieuw de pagina en probeer het opnieuw.");
+      }
+    }
 
     const { currentWeek, isAfterLockdownDay } = await Utils.afterLockdownDay(userPlan.userId);
 
@@ -402,7 +450,7 @@ class PlanController {
     });
 
     if (isAlreadyPlaceAnOrderForThisWeek) {
-      throw new HttpError("You already placed an order for this week", 400);
+      throw new HttpError("U heeft al een bestelling geplaatst voor deze week", 400);
     }
 
     if (userPlan.confirmOrderWeek && userPlan.confirmOrderWeek !== currentWeek) {
@@ -468,6 +516,7 @@ class PlanController {
         confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(currentWeek),
       },
     });
+
     await this.paymentUtils.updateSubscription(user.id);
 
     res.status(200).send(this.apiResponse.success({ planOrder, userPlan: updatedUserPlan }, { message: "Plan order confirmed" }));

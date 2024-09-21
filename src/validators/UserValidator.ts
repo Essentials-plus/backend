@@ -44,9 +44,9 @@ class UserValidator extends BaseValidator {
   });
 
   updateUser = this.firstTimeUpdateUser
-    .partial()
     .omit({ email: true })
     .extend({ numberOfDays: z.number().min(1).max(7), mealsPerDay: z.number().min(4).max(6) })
+    .partial()
     .strict();
 
   updatePassword = z

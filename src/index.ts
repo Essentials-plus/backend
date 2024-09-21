@@ -2,12 +2,13 @@ import axios from "axios";
 import cors from "cors";
 import { CronJob } from "cron";
 import "dotenv/config";
-import express from "express";
+import express, { Router } from "express";
 import "express-async-errors";
 import "./configs/database";
 import { prisma } from "./configs/database";
 import { env } from "./env";
 import routes from "./routes";
+import { webhookRouter } from "./routes/webhook";
 import OrderScheduler from "./schedulers/OrderScheduler";
 import { autoUpdatePendingPricePlanEmailTemplate } from "./templates/emails/auto-update-pending-price-plan-email-template";
 import Utils, { getNetherlandsDate } from "./utils";
@@ -18,32 +19,25 @@ import { sendEmailWithNodemailer } from "./utils/sender";
 
 const app = express();
 
-app.all("/", (_, res) => {
+app.use(cors({ origin: "*" }));
+
+const apiRouter = Router();
+apiRouter.use(express.json());
+
+apiRouter.all("/", (_, res) => {
   res.send("Ok");
 });
-app.all("/health-check", (_, res) => {
+apiRouter.all("/health-check", (_, res) => {
   console.log(`"/health-check" Received api call at ${new Date().toLocaleString()}`);
   res.send("Ok");
 });
 
-app.use(cors({ origin: "*" }));
-app.use(express.json());
-app.use("/api", routes);
-// app.use("/run", async (req, res) => {
-//   try {
-//     console.log("running");
-//     await new OrderScheduler().autoConfirmOrder();
-//     res.send("Ok");
-//   } catch (error) {
-//     res.send("Error");
-//   }
-// });
+apiRouter.use("/api", routes);
+app.use("/webhook", webhookRouter);
 
-// console.log({ dayOfTheWeek: Utils.dayOfTheWeek() });
+app.use(apiRouter);
 
 app.use(ErrorConfig.ErrorHandler);
-
-// console.log({ week: Utils.dayOfTheWeek() });
 
 app.listen(env.PORT, () => {
   console.log("Server is running");

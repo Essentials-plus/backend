@@ -510,6 +510,7 @@ class ProductController {
           sortOrder: termIds.findIndex((termId) => termId === id),
         },
       });
+      await Utils.sleep(100);
     }
 
     res.status(201).send(this.apiResponse.success(null));
@@ -592,6 +593,7 @@ class ProductController {
           sortOrder: ids.findIndex((categoryId) => categoryId === id),
         },
       });
+      await Utils.sleep(100);
     }
 
     res.status(201).send(this.apiResponse.success(null));

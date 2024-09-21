@@ -1,4 +1,5 @@
 import { prisma } from "../configs/database";
+import Utils from "../utils";
 
 const meals = [
   {
@@ -1370,6 +1371,7 @@ const seed = async () => {
           taxPercent: "TAX9",
         },
       });
+      await Utils.sleep(100);
     }
 
     console.log("Meals created successfully");
