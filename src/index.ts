@@ -1,4 +1,3 @@
-import axios from "axios";
 import cors from "cors";
 import { CronJob } from "cron";
 import "dotenv/config";
@@ -41,63 +40,25 @@ app.use(apiRouter);
 
 app.use(ErrorConfig.ErrorHandler);
 
-// const first = async () => {
-//   const recipientEmails = ["mailtest6@hakanbaydar.com", ...env.SUPPORT_USER_EMAIL];
-//   const order = await prisma.order.findFirst({
-//     include: {
-//       orderItems: true,
-//     },
-//   });
-//   // try {
-//   //   // Send welcome email
-//   //   await sendEmailWithNodemailer(
-//   //     "Bestelling bevestigd!",
-//   //     recipientEmails,
-//   //     productOrderConfirmationEmailTemplate({
-//   //       user: {
-//   //         name: "Hakan",
-//   //         surname: "/Saymon",
-//   //       },
-//   //       order: order!,
-//   //     }),
-//   //   );
-//   //   console.log("Order confirmation email sent to:", recipientEmails);
-//   // } catch (error) {
-//   //   console.log("error sending confirmation email to:", recipientEmails);
-//   //   console.log(error);
-//   // }
-//   console.log(
-//     productOrderConfirmationEmailTemplate({
-//       user: {
-//         name: "Hakan",
-//         surname: "/Saymon",
-//       },
-//       order: order!,
-//     }),
-//   );
-// };
-
-// first();
-
 app.listen(env.PORT, () => {
   console.log("Server is running");
   new OrderScheduler();
 
-  new CronJob(
-    "*/40 * * * * *", // runs every 40 seconds
-    () => {
-      axios
-        .get(`${env.API_SERVER_BASE_URL}/health-check`)
-        .then(() => {
-          // console.log(`"/health-check" api called at ${new Date().toLocaleString()}`);
-        })
-        .catch(() => {
-          console.log(`"/health-check" api failed at ${new Date().toLocaleString()}`);
-        });
-    },
-    null,
-    true,
-  );
+  // new CronJob(
+  //   "*/40 * * * * *", // runs every 40 seconds
+  //   () => {
+  //     axios
+  //       .get(`${env.API_SERVER_BASE_URL}/health-check`)
+  //       .then(() => {
+  //         // console.log(`"/health-check" api called at ${new Date().toLocaleString()}`);
+  //       })
+  //       .catch(() => {
+  //         console.log(`"/health-check" api failed at ${new Date().toLocaleString()}`);
+  //       });
+  //   },
+  //   null,
+  //   true,
+  // );
 
   new CronJob(
     "0 0 * * 1", // runs every monday
