@@ -1,10 +1,12 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, ProductAttribute, ZipCode } from "@prisma/client";
 import slugify from "slugify";
 import { prisma } from "../configs/database";
 import HttpError from "./HttpError";
 
+import axios from "axios";
 import moment, { Moment } from "moment-timezone";
 import { env } from "../env";
+import { appCache, getValidatedZipCodeInfoCacheKeyPreffix } from "./node-cache";
 
 export const getNetherlandsDate = (date?: Date | string | Moment) => moment.tz(date, "Europe/Amsterdam");
 
@@ -63,7 +65,7 @@ class Utils {
     const currentWeek = this.getCurrentWeekNumber();
 
     return {
-      isAfterLockdownDay: lockdownDay < dayOfTheWeek,
+      isAfterLockdownDay: lockdownDay <= dayOfTheWeek,
       currentWeek,
       user,
       dayOfTheWeek,
@@ -156,6 +158,144 @@ class Utils {
     }
     return 0;
   };
+
+  static removeUnnecessaryWhereClause(obj: Record<string, any>) {
+    // eslint-disable-next-line no-unused-vars
+    const { categories, ...rest } = obj;
+
+    return obj;
+  }
+
+  static async findHighestPriceProduct() {
+    const cacheKey = "findHighestPriceProduct";
+    const cached = appCache.get<{ highestProductPrice: number; highestProduct: Prisma.ProductGetPayload<{ include: { variations: true } }> }>(
+      cacheKey,
+    );
+
+    if (cached) return cached;
+
+    // Step 1: Find the highest price among simple products
+    const highestProduct = await prisma.product.findFirst({
+      where: {
+        highestPrice: {
+          not: null,
+        },
+      },
+      orderBy: {
+        highestPrice: "desc",
+      },
+    });
+
+    const highestProductPrice = highestProduct?.highestPrice!;
+
+    appCache.set(cacheKey, { highestProduct, highestProductPrice }, 60 * 2); // Expire after 2 minutes
+
+    return { highestProduct, highestProductPrice };
+  }
+  static attributeSortByOrder = (product: Prisma.ProductGetPayload<{ include: { attributes: true } }>) => {
+    const attributesInfo = product.attributesInfo;
+
+    const attributesSortOrder = (product as any)?.attributesInfo?.sortOrder as string[] | undefined;
+    if (attributesSortOrder && Array.isArray(attributesSortOrder) && attributesSortOrder.length > 0) {
+      const newAttributesOrder: ProductAttribute[] = [];
+      attributesSortOrder.forEach((orderId) => {
+        const findAttribute = product.attributes.find((attr) => attr.id === orderId);
+        if (findAttribute) {
+          newAttributesOrder.push({ ...findAttribute, ...(attributesInfo ? (attributesInfo as any).info[findAttribute.id] : {}) });
+        }
+      });
+
+      return newAttributesOrder;
+    } else {
+      return product.attributes;
+    }
+  };
+
+  static getValidatedZipCodeInfo = async ({ zipCode, houseNumber, skipDbCheck }: { zipCode: string; houseNumber: string; skipDbCheck?: boolean }) => {
+    const cacheKey = `${getValidatedZipCodeInfoCacheKeyPreffix}:${zipCode}-${houseNumber}${skipDbCheck ? "-skipDbCheck" : ""}`;
+
+    const cached = appCache.get<{ zipcodeData: any; zipCode?: ZipCode } | HttpError>(cacheKey);
+    if (cached) {
+      if (cached instanceof HttpError) {
+        throw cached;
+      }
+      return cached;
+    }
+
+    if (!zipCode || !houseNumber) throw new HttpError("Postcode niet gevonden", 404);
+    const first4Digits = zipCode.substring(0, 4);
+    if (zipCode.length < 4 || zipCode.length > 6 || first4Digits.length < 4) throw new HttpError("ongeldige postcode", 403);
+
+    let zipCodeExists;
+    if (!skipDbCheck) {
+      zipCodeExists = await prisma.zipCode.findFirst({
+        where: {
+          zipCode: {
+            startsWith: first4Digits,
+          },
+        },
+      });
+
+      if (!zipCodeExists) throw new HttpError("Uw postcode valt buiten bereik", 403);
+    }
+    let zipcodeData;
+    try {
+      const API_KEY = env.ZIPCODE_API_KEY;
+      const { data } = await axios.get(`https://api.postcodeapi.nu/v3/lookup/${zipCode}/${houseNumber}`, {
+        headers: {
+          "X-Api-Key": API_KEY,
+        },
+      });
+
+      zipcodeData = data;
+    } catch (error) {
+      const httpError = new HttpError("Bron niet gevonden", 404);
+      appCache.set(cacheKey, httpError, 60 * 10); // Expire after 10 minutes
+      throw httpError;
+    }
+
+    const result = { zipcodeData, zipCode: skipDbCheck ? undefined : zipCodeExists };
+    appCache.set(cacheKey, result, 60 * 10); // Expire after 10 minutes
+    return result;
+  };
+
+  static getNextLockdownDate = (lockDownDay: number) => {
+    const today = getNetherlandsDate(); // Current date
+    const todayDay = today.isoWeekday(); // ISO: Monday = 1, Sunday = 7
+
+    // Calculate days until the next lockdown day
+    const daysUntilLockdown = lockDownDay > todayDay ? lockDownDay - todayDay : 7 - (todayDay - lockDownDay);
+
+    const nextLockdownDate = today.add(daysUntilLockdown, "days");
+
+    return nextLockdownDate.toDate(); // ISO Netherlands format
+  };
+
+  static getNextDeliveryDate = (date: Date) => {
+    return moment(date).add(2, "days");
+  };
 }
 
 export default Utils;
+
+export const getEmailFooter = () => {
+  return {
+    html: `
+    <div class="contact-info">
+        <p>Met gezonde groet,<br>
+        <strong>Het EssentialsPlus-team</strong> 🌟</p>
+        <p>
+          <a href="mailto:service@essentialsplus.eu" style="color: #317673;">service@essentialsplus.eu</a><br>
+          <a href="tel:0132076877" style="color: #317673;">013 207 68 77</a>
+        </p>
+    </div>`,
+    css: `
+      .contact-info {
+        text-align: center;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #edf2f7;
+      }
+      `,
+  };
+};

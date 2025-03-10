@@ -7,10 +7,14 @@ export const nodemailerTransporter = nodemailer.createTransport({
   host: env.SMTP_HOST,
   port: env.SMTP_PORT,
   secure: true,
+  // secure: false, // Important: Must be false for port 587
   auth: {
     user: env.SMTP_USER,
     pass: env.SMTP_PASSWORD,
   },
+  // tls: {
+  //   rejectUnauthorized: false, // Add this if you're facing TLS issues
+  // },
 });
 
 export const sendEmailWithNodemailer = async (subject: Mail.Options["subject"], to: Mail.Options["to"], html: Mail.Options["html"]) => {

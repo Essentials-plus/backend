@@ -549,10 +549,10 @@ class MealController {
 
     const currentWeek = Utils.getCurrentWeekNumber();
 
-    const finalWeek = week || currentWeek;
+    const activeWeek = week || currentWeek;
     const weeklyMeal = await prisma.weeklyMeal.findFirst({
       where: {
-        week: finalWeek,
+        week: activeWeek,
       },
       include: {
         meals: {
@@ -581,7 +581,7 @@ class MealController {
 
     const isAlreadyPlaceAnOrderForThisWeek = await prisma.planOrder.findFirst({
       where: {
-        week: finalWeek,
+        week: activeWeek,
         plan: {
           user: {
             id: user.id,
@@ -590,23 +590,23 @@ class MealController {
       },
     });
 
-    const userOrderedWeek = user.plan?.confirmOrderWeek;
+    const currentUserOrderWeek = user.plan?.confirmOrderWeek;
 
     const date = getNetherlandsDate().isoWeek(week).isoWeekday(user.zipCode?.lockdownDay!).endOf("day");
     const now = getNetherlandsDate();
 
-    const isOrder = finalWeek === userOrderedWeek && !isAlreadyPlaceAnOrderForThisWeek && now.isBefore(date);
+    const isOrder = activeWeek === currentUserOrderWeek && !isAlreadyPlaceAnOrderForThisWeek && now.isBefore(date);
 
-    console.log({
-      isBefore: now.isBefore(date),
-      date: date.toString(),
-      now: now.toString(),
-      week: now.isoWeek(),
-      finalWeek,
-      userOrderedWeek,
-      isAlreadyPlaceAnOrderForThisWeek,
-      isOrder,
-    });
+    // console.log({
+    //   isBefore: now.isBefore(date),
+    //   date: date.toString(),
+    //   now: now.toString(),
+    //   week: now.isoWeek(),
+    //   finalWeek,
+    //   userOrderedWeek,
+    //   isAlreadyPlaceAnOrderForThisWeek,
+    //   isOrder,
+    // });
 
     res.status(200).send(this.apiResponse.success(userMeals, { isOrder, orderHistory: isAlreadyPlaceAnOrderForThisWeek }));
   };

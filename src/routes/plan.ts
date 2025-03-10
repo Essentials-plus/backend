@@ -28,6 +28,7 @@ userRouter.put("/", planController.updatePlan);
 userRouter.post("/order/confirm", planController.confirmPlanOrder);
 
 userRouter.get("/order", planController.getUserPlanOrders);
+userRouter.get("/order/:id", planController.getUserPlanOrderById);
 
 // Admin routes
 

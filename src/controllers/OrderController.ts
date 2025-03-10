@@ -1,10 +1,13 @@
+import { Prisma } from "@prisma/client";
 import { RequestHandler } from "express";
 import { prisma } from "../configs/database";
 import { env } from "../env";
+import { productOrderConfirmationEmailTemplate } from "../templates/emails/product-order-confirmation-email-template";
 import ApiResponse from "../utils/ApiResponse";
 import Hash from "../utils/Hash";
 import HttpError from "../utils/HttpError";
-import { decrementProductsStock, prepareProductOrder } from "../utils/order";
+import { createOrderPaymentSessionHandler, decrementProductsStock, prepareProductOrder } from "../utils/order";
+import { sendEmailWithNodemailer } from "../utils/sender";
 import stripe from "../utils/stripe";
 import OrderValidator from "../validators/OrderValidator";
 
@@ -13,7 +16,32 @@ class OrderController {
   private validators = new OrderValidator();
 
   getOrders: RequestHandler = async (req, res) => {
+    const filterQuery = await this.validators.filterProduct.parseAsync(req.query);
+
     const paginationOptions = await this.validators.validatePagination.parseAsync(req.query);
+    const whereClause: Prisma.OrderWhereInput = {};
+
+    if (filterQuery?.q) {
+      const queryFilter = {
+        contains: filterQuery.q,
+        mode: "insensitive",
+      } as const;
+
+      whereClause.OR = [
+        { id: queryFilter },
+        { orderId: queryFilter },
+        {
+          user: {
+            OR: [{ name: queryFilter }, { surname: queryFilter }, { email: queryFilter }, { mobile: queryFilter }],
+          },
+        },
+      ];
+    }
+
+    if (filterQuery?.status) {
+      whereClause.status = filterQuery?.status;
+    }
+
     const [orders, meta] = await prisma.order
       .paginate({
         include: {
@@ -25,12 +53,13 @@ class OrderController {
           },
         },
         orderBy: {
-          createdAt: "desc",
+          paidAt: "desc",
         },
         where: {
           status: {
             not: "unpaid",
           },
+          ...whereClause,
         },
       })
       .withPages(paginationOptions);
@@ -55,6 +84,7 @@ class OrderController {
             zipCode: true,
           },
         },
+        orderItems: true,
         // coupon: true,
       },
     });
@@ -71,6 +101,13 @@ class OrderController {
 
     const orderExist = await prisma.order.findUnique({ where: { id } });
     if (!orderExist) throw new HttpError("Bestelling niet gevonden", 404);
+
+    if (orderExist.status === "unpaid") {
+      throw new HttpError("You can not update a Unpaid order", 400);
+    }
+    if (body.status === "unpaid") {
+      throw new HttpError("You can not update an order to Unpaid", 400);
+    }
 
     const order = await prisma.order.update({
       where: {
@@ -96,7 +133,7 @@ class OrderController {
   createOrderPayment: RequestHandler = async (req, res) => {
     const userId = await this.validators.validateUUID.parseAsync(req.user?.id);
 
-    const { couponId } = await this.validators.createOrderPayment.parseAsync(req.body);
+    const { couponCode } = await this.validators.createOrderPayment.parseAsync(req.body);
 
     const productCart = await prisma.productCart.findMany({
       where: {
@@ -111,7 +148,7 @@ class OrderController {
       },
     });
 
-    const coupon = await prisma.coupon.findUnique({ where: { id: couponId || "" } });
+    const coupon = await prisma.coupon.findUnique({ where: { code: couponCode } });
 
     const totalValue = productCart?.reduce((prev, d) => {
       if (d.product.type === "simple") {
@@ -168,74 +205,35 @@ class OrderController {
   };
 
   createOrderPaymentSession: RequestHandler = async (req, res) => {
-    const { amount, order, user } = await prepareProductOrder(req);
+    const { order, user } = await prepareProductOrder(req);
 
     if (!user || !user.customer) throw new HttpError("Gebruiker niet gevonden", 404);
 
-    const currency_type = env.CURRENCY_TYPE;
-
-    const pmTypes = ["card", "paypal"];
-
-    // eur not support in klarna
-    if (currency_type == "usd") {
-      pmTypes.push("klarna");
-    }
-
-    if (currency_type == "eur") {
-      pmTypes.push("ideal");
-    }
-
-    const product = await stripe.products.create({
-      name: "Buy Products",
-    });
-
-    const stripe_price = await stripe.prices.create({
-      unit_amount: Math.round(amount * 100),
-      currency: currency_type,
-      product: product.id,
-    });
-
-    const token = await prisma.token.create({
-      data: {
-        data: Hash.encryptData({
-          id: user.id,
-          orderId: order.id,
-        }),
-        type: "ConfirmPayment",
-        token: Hash.randomString(),
-      },
-    });
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: pmTypes as any,
-      line_items: [
-        {
-          price: stripe_price.id, // replace with your actual price ID
-          quantity: 1,
-        },
-      ],
-      customer: user.customer,
-      mode: "payment",
-      success_url: `${req.protocol}://${req.get("host")}/api/public/order/payment?session_id={CHECKOUT_SESSION_ID}&token=${token.token}&amount=${amount}`,
-      cancel_url: `${env.CLIENT_URL}/cart`,
+    const { session } = await createOrderPaymentSessionHandler({
+      order,
+      user,
+      req,
     });
 
     res.status(200).send(this.apiResponse.success({ session }, { message: "Payment session created" }));
   };
 
   confirmOrderPaymentSession: RequestHandler = async (req, res) => {
-    // const userId = await this.validators.validateUUID.parseAsync(req.user?.id);
-
-    const { token, amount } = await this.validators.confirmOrderPayment.parseAsync(req.query);
+    console.log("confirmOrderPaymentSession");
+    const { token, amount, orderId: orderIdFromUrl } = await this.validators.confirmOrderPayment.parseAsync(req.query);
 
     const checkToken = await prisma.token.findUnique({ where: { token, type: "ConfirmPayment" } });
-    if (!checkToken) throw new HttpError("Invalid token", 403);
+
+    if (!checkToken) {
+      if (await prisma.order.findUnique({ where: { id: orderIdFromUrl, status: "processing" } })) {
+        res.redirect(`${env.PRODUCT_ORDER_PAYMENT_SUCCESS_URL}`);
+        return;
+      }
+      throw new HttpError("Invalid token", 403);
+    }
 
     // Hash the new password
     const data = Hash.decryptData(checkToken.data);
-
-    // Update the admin's password using the hashed password
-    await prisma.token.delete({ where: { token: token } });
 
     const userId = data?.id;
     const orderId = data?.orderId;
@@ -244,7 +242,12 @@ class OrderController {
 
     if (!user || !user.customer) throw new HttpError("Gebruiker niet gevonden", 404);
 
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        orderItems: true,
+      },
+    });
 
     if (!order) throw new HttpError("Gebruiker niet gevonden", 404);
 
@@ -257,56 +260,114 @@ class OrderController {
       throw new HttpError("Gebruiker niet gevonden", 400);
     }
 
-    await prisma.order.update({ where: { id: orderId }, data: { status: "processing" } });
-
-    try {
-      decrementProductsStock({ cartProducts: order.products as any });
-    } catch (error) {
-      console.log("Failed to run `decrementProductsStock fn`");
-    }
-
-    res.redirect(`${env.PRODUCT_ORDER_PAYMENT_SUCCESS_URL}`);
-  };
-
-  placeOrder: RequestHandler = async (req, res) => {
-    const { amount, cartProducts, order, user } = await prepareProductOrder(req);
-
-    if (!user || !user.customer) throw new HttpError("Gebruiker niet gevonden", 404);
-
-    const paymentMethods = await stripe.paymentMethods.list({ customer: user.customer });
-
-    const pm = paymentMethods.data?.[0];
-
-    const currency_type = env.CURRENCY_TYPE;
-
-    await stripe.paymentIntents.create({
-      customer: user.customer,
-      amount: Number((amount * 100).toFixed(2)),
-      currency: currency_type,
-      payment_method_types: ["card", "sepa_debit", "paypal"],
-      payment_method: pm.id,
-      confirm: true,
-      off_session: true,
+    await prisma.$transaction(async () => {
+      await prisma.token.delete({ where: { token: token } });
+      await prisma.order.update({ where: { id: orderId }, data: { status: "processing", paidAt: new Date() } });
     });
 
-    await prisma.order.update({
-      where: { id: order.id },
-      data: {
-        status: "processing",
+    // try {
+    //   decrementProductsStock({ orderItems: order.orderItems });
+
+    //   try {
+    //     // Send welcome email
+    //     await sendEmailWithNodemailer(
+    //       "Bestelling bevestigd!",
+    //       user.email,
+    //       productOrderConfirmationEmailTemplate({
+    //         user: user,
+    //         order,
+    //       }),
+    //     );
+    //   } catch (error) {
+    //     console.log("error sendEmailWithNodemailer");
+    //     console.log(error);
+    //   }
+
+    //   const productReviewOpportunityData = order.orderItems.map((item) => {
+    //     return {
+    //       productId: item.productId,
+    //       userId: user.id,
+    //       orderId: order.id,
+    //     };
+    //   });
+
+    //   await prisma.productReviewOpportunity.createMany({
+    //     data: productReviewOpportunityData,
+    //   });
+    // } catch (error) {
+    //   console.log("Failed to run `decrementProductsStock fn`");
+    // }
+
+    try {
+      await decrementProductsStock({ orderItems: order.orderItems });
+    } catch (error) {
+      console.log("Failed to run `decrementProductsStock fn`");
+      console.log(error);
+    }
+
+    try {
+      const productReviewOpportunityData = order.orderItems.map((item) => {
+        return {
+          productId: item.productId,
+          userId: user.id,
+          orderId: order.id,
+        };
+      });
+
+      await prisma.productReviewOpportunity.createMany({
+        data: productReviewOpportunityData,
+      });
+    } catch (error) {
+      console.log(error);
+    }
+
+    const recipientEmails = [user.email, ...env.SUPPORT_USER_EMAIL];
+    try {
+      // Send welcome email
+      await sendEmailWithNodemailer(
+        "Bestelling bevestigd!",
+        recipientEmails,
+        productOrderConfirmationEmailTemplate({
+          user: user,
+          order,
+        }),
+      );
+      console.log("Order confirmation email sent to:", recipientEmails);
+    } catch (error) {
+      console.log("error sending confirmation email to:", recipientEmails);
+      console.log(error);
+    }
+
+    console.log({ order, user, amount });
+    console.log("Done: confirmOrderPaymentSession");
+
+    res.status(200).redirect(`${env.PRODUCT_ORDER_PAYMENT_SUCCESS_URL}`);
+  };
+
+  payUnpaidOrder: RequestHandler = async (req, res) => {
+    const userId = await this.validators.validateUUID.parseAsync(req.user?.id);
+    const orderId = await this.validators.validateUUID.parseAsync(req.params?.orderId);
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const order = await prisma.order.findUnique({
+      where: {
+        id: orderId,
+        status: "unpaid",
+        userId: userId,
       },
     });
 
-    res.status(200).send(
-      this.apiResponse.success(order, {
-        message: "Order placed",
-      }),
-    );
-
-    try {
-      await decrementProductsStock({ cartProducts });
-    } catch (error) {
-      console.log("Failed to run `decrementProductsStock fn`");
+    if (!order || !user) {
+      throw new HttpError("Geen bestelling gevonden", 404);
     }
+
+    const { session } = await createOrderPaymentSessionHandler({
+      order,
+      user,
+      req,
+    });
+
+    res.status(200).send(this.apiResponse.success({ session }, { message: "Payment session created" }));
   };
 
   getOrdersByUserId: RequestHandler = async (req, res) => {
@@ -317,14 +378,35 @@ class OrderController {
         where: { userId },
         include: {
           user: true,
+          orderItems: true,
         },
         orderBy: {
-          createdAt: "desc",
+          paidAt: "desc",
         },
       })
       .withPages(paginationOptions);
 
     res.status(200).send(this.apiResponse.success(orders, { meta }));
+  };
+
+  getOrderByIdForUser: RequestHandler = async (req, res) => {
+    const userId = await this.validators.validateUUID.parseAsync(req.user?.id);
+    const orderId = await this.validators.validateUUID.parseAsync(req.params?.id);
+
+    const order = await prisma.order.findUnique({
+      where: {
+        id: orderId,
+        userId,
+      },
+      include: {
+        orderItems: true,
+        user: true,
+      },
+    });
+
+    if (!order) throw new HttpError("Bestelling niet gevonden", 404);
+
+    res.status(200).send(this.apiResponse.success(order));
   };
 }
 

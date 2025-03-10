@@ -21,18 +21,19 @@ class UserAuthController {
   loginUser: RequestHandler = async (req, res) => {
     // validate
     const value = await this.validators.login.parseAsync(req.body);
+    const guestId = req.guestId;
 
     // check user
     const user = await prisma.user.findUnique({ where: { email: value.email }, include: { plan: true } });
-    if (!user) throw new HttpError("Gebruiker bestaat niet", 404);
+    if (!user) throw new HttpError("Ongeldige inloggegevens", 400);
 
     if (user.status === "blocked") {
       throw new HttpError("Gebruiker is geblokkeerd door autoriteit", 403);
     }
 
     // check password
-    const isMatch = await Hash._matchPassword(value.password, user.password);
-    if (!isMatch) throw new HttpError("Ongeldige identificatie", 403);
+    const isMatch = await Hash._matchPassword(value.password, user.password || "");
+    if (!isMatch) throw new HttpError("Gebruiker bestaat niet", 403);
 
     if (!user.verified) {
       throw new HttpError("Uw account is nog niet geverifieerd. Verifieer dit alstublieft", 403);
@@ -40,6 +41,16 @@ class UserAuthController {
     const hash = jwt.sign({ id: user.id }, this.JWT_SECRET);
 
     user.password = "";
+
+    await prisma.productCart.updateMany({
+      where: {
+        guestId: guestId,
+      },
+      data: {
+        userId: user.id,
+        guestId: null,
+      },
+    });
 
     res.status(200).send(
       this.apiResponse.success(hash, {
@@ -51,20 +62,37 @@ class UserAuthController {
 
   // @POST="/user/signup"
   signupUser: RequestHandler = async (req, res) => {
-    const value = await this.validators.signup.parseAsync(req.body);
+    const { redirect, ...value } = await this.validators.signup.parseAsync(req.body);
 
-    const user = await prisma.user.findUnique({ where: { email: value.email } });
+    const user = await prisma.user.findUnique({
+      where: {
+        email: value.email,
+      },
+    });
 
-    if (user) throw new HttpError("Gebruiker bestaat al", 403);
+    if (user && user.password !== null) throw new HttpError("Gebruiker bestaat al", 403);
 
     const hashPassword = await Hash._hashPassword(value.password);
 
-    const newUser = await prisma.user.create({
-      data: {
-        ...value,
-        password: hashPassword,
-      },
-    });
+    let newUser;
+    if (user && user.password === null) {
+      newUser = await prisma.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          ...value,
+          password: hashPassword,
+        },
+      });
+    } else {
+      newUser = await prisma.user.create({
+        data: {
+          ...value,
+          password: hashPassword,
+        },
+      });
+    }
 
     const token = await prisma.token.create({
       data: {
@@ -77,7 +105,7 @@ class UserAuthController {
       },
     });
 
-    const confirmEmailUrl = `${env.CLIENT_URL}/register/verify/${token.token}`;
+    const confirmEmailUrl = `${env.CLIENT_URL}/register/verify/${token.token}${redirect ? `?redirect=${redirect}` : ""}`;
 
     await sendEmailWithNodemailer("Confirm your email", value.email, confirmEmailEmailTemplate({ name: newUser.name, url: confirmEmailUrl }));
 
@@ -125,7 +153,7 @@ class UserAuthController {
     // generate temp token
     const hash = jwt.sign({ id: user.id }, this.JWT_SECRET);
 
-    res.status(200).send(this.apiResponse.success(hash, { message: "E-mail succesvol geverifieerd" }));
+    res.status(200).send(this.apiResponse.success({ token: hash, user }, { message: "E-mail succesvol geverifieerd" }));
   };
 
   // @POST="/user/password/forgot"
@@ -135,6 +163,12 @@ class UserAuthController {
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) throw new HttpError("Geen gebruiker gevonden met dit e-mailadres", 404);
+    if (user && user.password === null) {
+      throw new HttpError(
+        "U heeft een gastaccount aangemaakt met dit e-mailadres dat u nog niet heeft geactiveerd. Maak eerst een account aan met dit e-mailadres",
+        401,
+      );
+    }
 
     const hash = Hash.encryptData({
       id: user.id,

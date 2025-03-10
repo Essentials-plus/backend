@@ -3,6 +3,7 @@ import { prisma } from "../configs/database";
 import { env } from "../env";
 import { autoConfirmOrderEmailTemplate } from "../templates/emails/auto-confirm-order-email-template";
 import { autoConfirmOrderFailedForAUser } from "../templates/emails/auto-confirm-order-failed-for-a-user";
+import { weeklyMealConfirmationEmailTemplate } from "../templates/emails/weekly-meal-confirmation-email-template";
 import Utils, { getNetherlandsDate } from "../utils";
 import { reportCronJobError } from "../utils/AnalyticsReport";
 import CalorieCalCulator from "../utils/CalorieCalculator";
@@ -31,7 +32,7 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
       }),
     );
 
-    console.log({ oneDayBehind, currentDayOfTheWeek: oneDayBehindDayNumber, isoWeekday: oneDayBehind.isoWeekday(), day: oneDayBehind.isoWeekday() });
+    // console.log({ oneDayBehind, currentDayOfTheWeek: oneDayBehindDayNumber, isoWeekday: oneDayBehind.isoWeekday(), day: oneDayBehind.isoWeekday() });
 
     const users = await prisma.user.findMany({
       where: {
@@ -128,28 +129,10 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
 
         const mealsForTheWeek = await validators.mealForTheWeek.parseAsync(getDaysOfMeals);
 
-        // await prisma.planOrder.create({
-        //   data: {
-        //     mealsForTheWeek,
-        //     week: oneDayBehindWeekNumber,
-        //     totalAmount: totalPrice,
-        //     shippingAmount,
-        //     plan: {
-        //       connect: {
-        //         id: userPlan.id,
-        //       },
-        //     },
-        //   },
-        // })
-        // await prisma.userPlan.update({
-        //   where: { id: userPlan.id },
-        //   data: { confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(oneDayBehindWeekNumber) },
-        // });
-
         await prisma.$transaction(async (tx) => {
           await tx.userNextWeekPlanPrice.deleteMany({ where: { userId: user.id } });
           await paymentUtils.updateSubscription(user.id);
-          await tx.planOrder.create({
+          const planOrder = await tx.planOrder.create({
             data: {
               mealsForTheWeek,
               week: oneDayBehindWeekNumber,
@@ -166,8 +149,26 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
             where: { id: userPlan.id },
             data: { confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(oneDayBehindWeekNumber) },
           });
-        });
 
+          try {
+            // Send welcome email
+            sendEmailWithNodemailer(
+              "Uw wekelijkse maaltijdbevestiging",
+              user.email,
+              weeklyMealConfirmationEmailTemplate({
+                user: user,
+                deliveryDate: Utils.getNextDeliveryDate(Utils.getNextLockdownDate(user.zipCode?.lockdownDay!)).format("dddd, DD/MM/YYYY"),
+                numberOfDays: userPlan.numberOfDays,
+                totalCaloriesInThisWeek: Math.round(userKcal * userPlan.numberOfDays),
+                totalMealsInThisWeek: Math.round(userPlan.numberOfDays * userPlan.mealsPerDay),
+                weekNumber: oneDayBehindWeekNumber,
+                orderId: planOrder.id,
+              }),
+            );
+          } catch (error) {
+            console.log(error);
+          }
+        });
         successfulOrders++;
         await Utils.sleep(100);
       } catch (userError: any) {

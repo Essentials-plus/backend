@@ -1,3 +1,5 @@
+import { getEmailFooter } from "../../utils";
+
 export const getLowStockEmailTemplate = ({
   lowStockProducts,
 }: {
@@ -8,6 +10,8 @@ export const getLowStockEmailTemplate = ({
     currentStock: number;
   }[];
 }) => {
+  const { css, html } = getEmailFooter();
+
   return `<!DOCTYPE html>
     <html>
     <head>
@@ -61,6 +65,7 @@ export const getLowStockEmailTemplate = ({
             color: #777777;
             font-size: 12px;
         }
+            ${css}
     </style>
     </head>
     <body>
@@ -84,6 +89,8 @@ export const getLowStockEmailTemplate = ({
               )
               .join("")}
         </div>
+
+        ${html}
     </div>
     </body>
     </html>`;

@@ -1,4 +1,5 @@
 import { env } from "../../env";
+import { getEmailFooter } from "../../utils";
 
 export const autoUpdatePendingPricePlanEmailTemplate = ({
   date,
@@ -9,6 +10,8 @@ export const autoUpdatePendingPricePlanEmailTemplate = ({
   title: string;
   totalUpdated?: string | number;
 }) => {
+  const { css, html } = getEmailFooter();
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -65,6 +68,7 @@ export const autoUpdatePendingPricePlanEmailTemplate = ({
             text-align: center;
             color: #999999;
         }
+            ${css}
     </style>
 </head>
 <body>
@@ -77,6 +81,8 @@ export const autoUpdatePendingPricePlanEmailTemplate = ({
             <h1>${title}</h1>
             <p>Started at: ${date}</p>
             ${typeof totalUpdated !== "undefined" ? `<p>Total plan updated: ${totalUpdated}</p>` : ""}
+
+            ${html}
         </div>
         <div class="footer">
             <p>&copy; ${new Date().getFullYear()} ${env.APP_NAME}. All rights reserved.</p>

@@ -1,10 +1,8 @@
 import { Prisma } from "@prisma/client";
-import axios from "axios";
 import { compare, hash } from "bcrypt";
 import { RequestHandler } from "express";
 import { z } from "zod";
 import { prisma } from "../configs/database";
-import { env } from "../env";
 import Utils from "../utils";
 import ApiResponse from "../utils/ApiResponse";
 import CalorieCalCulator from "../utils/CalorieCalculator";
@@ -74,7 +72,7 @@ class UserController {
 
     const user = await prisma.user.update({
       where: { id: id },
-      data: { ...value, ...(value.password && { password: password }) },
+      data: { ...value, ...(value.password && findUser.password !== null && { password: password }) },
       select: Utils.prismaExclude("User", ["password"]),
     });
 
@@ -115,14 +113,10 @@ class UserController {
       if (!zipCodeExists) throw new HttpError("Uw postcode valt buiten bereik", 403);
 
       try {
-        const response = await axios.get(`https://api.postcodeapi.nu/v3/lookup/${zipCodeExists.zipCode}/${value.nr}`, {
-          headers: {
-            "X-Api-Key": env.ZIPCODE_API_KEY,
-          },
-        });
+        const { zipcodeData } = await Utils.getValidatedZipCodeInfo({ zipCode: zipCodeExists.zipCode, houseNumber: value.nr!, skipDbCheck: true });
 
-        value.city = response.data?.city;
-        value.address = response.data?.street;
+        value.city = zipcodeData?.city;
+        value.address = zipcodeData?.street;
       } catch (error) {
         throw new HttpError(`Sorry. Wij dekken dit gebied niet. Huisnummer: ${value.nr}`, 404);
       }
@@ -227,11 +221,22 @@ class UserController {
       ];
     }
 
-    const [users, meta] = await prisma.user
-      .paginate({ select: Utils.prismaExclude("User", ["password"]), where: whereClause })
-      .withPages(paginationOptions);
+    const [users, meta] = await prisma.user.paginate({ where: whereClause }).withPages(paginationOptions);
 
-    res.status(200).send(this.apiResponse.success(users, { meta }));
+    res.status(200).send(
+      this.apiResponse.success(
+        users.map((user) => {
+          const userPassword = user.password;
+          // @ts-ignore
+          delete user.password;
+          return {
+            ...user,
+            isGuestUser: userPassword === null,
+          };
+        }),
+        { meta },
+      ),
+    );
   };
   // @GET="/:id" @Note: AdminRoute
   getUserById: RequestHandler = async (req, res) => {
@@ -276,7 +281,7 @@ class UserController {
     const findUser = await prisma.user.findUnique({ where: { id } });
     if (!findUser) throw new HttpError("Gebruiker niet gevonden met deze ID");
 
-    const matchCurrent = await compare(value.currentPassword, findUser.password);
+    const matchCurrent = await compare(value.currentPassword, findUser.password || "");
 
     if (!matchCurrent) throw new HttpError("Huidig ​​wachtwoord niet geldig");
 

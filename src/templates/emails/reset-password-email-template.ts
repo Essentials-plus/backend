@@ -1,6 +1,9 @@
 import { env } from "../../env";
+import { getEmailFooter } from "../../utils";
 
 export const resetPasswordEmailTemplate = ({ name, resetLink }: { name: string; resetLink: string }) => {
+  const { css, html } = getEmailFooter();
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -56,6 +59,7 @@ export const resetPasswordEmailTemplate = ({ name, resetLink }: { name: string; 
             text-align: center;
             color: #999999;
         }
+            ${css}
     </style>
 </head>
 <body>
@@ -71,6 +75,8 @@ export const resetPasswordEmailTemplate = ({ name, resetLink }: { name: string; 
             <p>If you did not request a password reset, please ignore this email or contact support if you have questions.</p>
             <p>Thanks,</p>
             <p>${env.APP_NAME}</p>
+
+            ${html}
         </div>
         <div class="footer">
             <p>&copy; ${new Date().getFullYear()} ${env.APP_NAME}. All rights reserved.</p>

@@ -1,11 +1,14 @@
 import { RequestHandler } from "express";
 import { prisma } from "../configs/database";
 import { env } from "../env";
+import { mealWelcomeConfirmationEmailTemplate } from "../templates/emails/meal-welcome-confirmation-email-template";
+import { weeklyMealConfirmationEmailTemplate } from "../templates/emails/weekly-meal-confirmation-email-template";
 import Utils from "../utils";
 import ApiResponse from "../utils/ApiResponse";
 import CalorieCalCulator from "../utils/CalorieCalculator";
 import HttpError from "../utils/HttpError";
 import PaymentUtils from "../utils/PaymentUtils";
+import { sendEmailWithNodemailer } from "../utils/sender";
 import stripe from "../utils/stripe";
 import PlanValidator from "../validators/PlanValidator";
 
@@ -142,7 +145,6 @@ class PlanController {
     if (!user || !user.customer) throw new HttpError("Gebruiker of klant niet gevonden ", 404);
 
     if (!user.plan) throw new HttpError("Plan niet gevonden", 404);
-
     if (user.plan.status === "active") throw new HttpError("Plan al geactiveerd", 404);
 
     const listPaymentMethods = await stripe.paymentMethods.list({ customer: user.customer });
@@ -156,8 +158,14 @@ class PlanController {
       throw new HttpError("Er is iets fout gegaan", 403);
     }
 
+    const lockdownDay = user.zipCode?.lockdownDay;
+
+    if (typeof lockdownDay === "undefined") {
+      throw new HttpError("No lockdown day found");
+    }
+
     const { isAfterLockdownDay } = await Utils.afterLockdownDay(userId);
-    console.log({ isAfterLockdownDay, day: Utils.getNextSundayDaysCountISO(isAfterLockdownDay) });
+    // console.log({ isAfterLockdownDay, day: Utils.getNextSundayDaysCountISO(isAfterLockdownDay) });
 
     const currency_type = env.CURRENCY_TYPE;
 
@@ -169,12 +177,6 @@ class PlanController {
         interval: "week",
       },
     });
-
-    const lockdownDay = user.zipCode?.lockdownDay;
-
-    if (typeof lockdownDay === "undefined") {
-      throw new HttpError("No lockdown day found");
-    }
 
     const subscription = await stripe.subscriptions.create({
       customer: user.customer,
@@ -189,14 +191,31 @@ class PlanController {
       trial_period_days: Utils.getNextSundayDaysCountISO(isAfterLockdownDay),
     });
 
-    await prisma.userPlan.update({
-      where: { id: user.plan.id },
-      data: {
-        status: "active",
-      },
-    });
+    await prisma.$transaction([
+      prisma.userPlan.update({
+        where: { id: user.plan.id },
+        data: {
+          status: "active",
+        },
+      }),
+      prisma.user.update({ where: { id: user.id }, data: { access: "all" } }),
+    ]);
 
-    await prisma.user.update({ where: { id: user.id }, data: { access: "all" } });
+    try {
+      // Send welcome email
+      sendEmailWithNodemailer(
+        "Welkom bij EssentialsPlus",
+        user.email,
+        mealWelcomeConfirmationEmailTemplate({
+          user: user,
+          deliveryStartDate: Utils.getNextDeliveryDate(Utils.getNextLockdownDate(user.zipCode?.lockdownDay!)).format("dddd, DD/MM/YYYY"),
+          numberOfDaysPerWeek: user.plan.numberOfDays,
+          totalCaloriesNeedPerDay: Number(userKcal.toFixed(0)),
+        }),
+      );
+    } catch (error) {
+      console.log(error);
+    }
 
     res.status(200).send(this.apiResponse.success({ subscriptionId: subscription.id }, { message: "Subscription confirmed" }));
   };
@@ -212,21 +231,21 @@ class PlanController {
 
     if (user.plan.status !== "active") throw new HttpError("Abonnement niet geactiveerd", 404);
 
-    const currentWeekNumber = Utils.getCurrentWeekNumber();
+    // const currentWeekNumber = Utils.getCurrentWeekNumber();
 
-    const isAlreadyPlaceAnOrderForThisWeek = await prisma.planOrder.findFirst({
-      where: {
-        week: currentWeekNumber,
-        plan: {
-          userId: user.id,
-        },
-      },
-    });
-    if (isAlreadyPlaceAnOrderForThisWeek)
-      throw new HttpError(
-        "U heeft een bestelling geplaatst voor deze week en de factuur is nog niet betaald. Wacht tot volgende week om uw abonnement op te zeggen.",
-        400,
-      );
+    // const isAlreadyPlaceAnOrderForThisWeek = await prisma.planOrder.findFirst({
+    //   where: {
+    //     week: currentWeekNumber,
+    //     plan: {
+    //       userId: user.id,
+    //     },
+    //   },
+    // });
+    // if (isAlreadyPlaceAnOrderForThisWeek)
+    //   throw new HttpError(
+    //     "U heeft een bestelling geplaatst voor deze week en de factuur is nog niet betaald. Wacht tot volgende week om uw abonnement op te zeggen.",
+    //     400,
+    //   );
 
     const list = await stripe.subscriptions.list({
       customer: user.customer,
@@ -244,7 +263,7 @@ class PlanController {
 
     await prisma.userPlan.update({ where: { id: user.plan.id }, data: { status: "canceled" } });
 
-    res.status(200).send(this.apiResponse.success({ message: "Subscription canceled" }));
+    res.status(200).send(this.apiResponse.success({ message: "Abonnement geannuleerd" }));
   };
 
   viewPlanOnStripe: RequestHandler = async (req, res) => {
@@ -412,7 +431,7 @@ class PlanController {
   confirmPlanOrder: RequestHandler = async (req, res) => {
     const userId = await this.validators.validateUUID.parseAsync(req.user?.id);
 
-    const user = await prisma.user.findUnique({ where: { id: userId }, include: { plan: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, include: { plan: true, zipCode: true } });
 
     if (!user) {
       throw new HttpError("Gebruiker niet gevonden", 404);
@@ -518,6 +537,25 @@ class PlanController {
     });
 
     await this.paymentUtils.updateSubscription(user.id);
+
+    try {
+      // Send welcome email
+      sendEmailWithNodemailer(
+        "Uw wekelijkse maaltijdbevestiging",
+        user.email,
+        weeklyMealConfirmationEmailTemplate({
+          user: user,
+          deliveryDate: Utils.getNextDeliveryDate(Utils.getNextLockdownDate(user.zipCode?.lockdownDay!)).format("dddd, DD/MM/YYYY"),
+          numberOfDays: user.plan.numberOfDays,
+          totalCaloriesInThisWeek: Math.round(userKcal * user.plan.numberOfDays),
+          totalMealsInThisWeek: Math.round(user.plan.numberOfDays * user.plan.mealsPerDay),
+          weekNumber: currentWeek,
+          orderId: planOrder.id,
+        }),
+      );
+    } catch (error) {
+      console.log(error);
+    }
 
     res.status(200).send(this.apiResponse.success({ planOrder, userPlan: updatedUserPlan }, { message: "Plan order confirmed" }));
   };
@@ -646,6 +684,26 @@ class PlanController {
       .withPages(paginationOptions);
 
     res.status(200).send(this.apiResponse.success(planOrders, { meta }));
+  };
+
+  getUserPlanOrderById: RequestHandler = async (req, res) => {
+    const userId = await this.validators.validateUUID.parseAsync(req.user?.id);
+    const id = await this.validators.validateUUID.parseAsync(req.params?.id);
+
+    const plan = await prisma.userPlan.findUnique({ where: { userId } });
+
+    if (!plan) throw new HttpError("Required plan not found", 404);
+
+    const order = await prisma.planOrder.findUnique({
+      where: {
+        id,
+        planId: plan.id,
+      },
+    });
+
+    if (!order) throw new HttpError("Bestelling niet gevonden", 404);
+
+    res.status(200).send(this.apiResponse.success(order));
   };
 }
 

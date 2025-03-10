@@ -1,6 +1,9 @@
 import { env } from "../../env";
+import { getEmailFooter } from "../../utils";
 
 export const confirmEmailEmailTemplate = ({ url, name }: { url: string; name: string }) => {
+  const { css, html } = getEmailFooter();
+
   return `<!DOCTYPE html>
   <html lang="en">
   <head>
@@ -57,6 +60,7 @@ export const confirmEmailEmailTemplate = ({ url, name }: { url: string; name: st
               text-align: center;
               color: #999999;
           }
+              ${css}
       </style>
   </head>
   <body>
@@ -70,6 +74,8 @@ export const confirmEmailEmailTemplate = ({ url, name }: { url: string; name: st
               <p>Thank you for signing up! Please click the button below to confirm your email address.</p>
               <a href='${url}' class="btn">Confirm Email</a>
               <p>If you did not create an account, no further action is required.</p>
+
+              ${html}
           </div>
           <div class="footer">
               <p>&copy; ${new Date().getFullYear()} ${env.APP_NAME}. All rights reserved.</p>

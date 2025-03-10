@@ -1,6 +1,9 @@
 import { env } from "../../env";
+import { getEmailFooter } from "../../utils";
 
 export const crashReportEmailTemplate = ({ crashReportText }: { crashReportText: string }) => {
+  const { css, html } = getEmailFooter();
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -57,6 +60,7 @@ export const crashReportEmailTemplate = ({ crashReportText }: { crashReportText:
             text-align: center;
             color: #999999;
         }
+        ${css}
     </style>
 </head>
 <body>
@@ -75,6 +79,8 @@ export const crashReportEmailTemplate = ({ crashReportText }: { crashReportText:
             </div>
             <p>We apologize for the inconvenience caused. Our team is currently investigating the issue and will provide an update as soon as possible.</p>
             <p>Thank you for your understanding and patience.</p>
+
+            ${html}
         </div>
         <div class="footer">
             <p>&copy; ${new Date().getFullYear()} ${env.APP_NAME}. All rights reserved.</p>

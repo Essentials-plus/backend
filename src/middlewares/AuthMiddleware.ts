@@ -1,5 +1,7 @@
 import { RequestHandler } from "express";
 import jwt from "jsonwebtoken";
+import { v4 as uuid } from "uuid";
+import { z } from "zod";
 import { prisma } from "../configs/database";
 import { env } from "../env";
 import HttpError from "../utils/HttpError";
@@ -41,10 +43,46 @@ class AuthMiddleware {
 
     //check user
     const user = await prisma.user.findUnique({ where: { id: hash.id } });
+    if (!user) throw new HttpError("Authorization failed, Please login", 401);
+    if (user.status === "blocked") throw new HttpError("User is blocked by authority", 403);
+
+    req.user = { id: hash?.id };
+    next();
+  };
+
+  validateGuestUser: RequestHandler = async (req, res, next) => {
+    const auth = req.headers["authorization"];
+    const guestId = z.string().uuid().or(z.string().email()).optional().safeParse(req.headers["guestid"]).data;
+
+    if (!auth) {
+      if (guestId) {
+        req.guestId = guestId;
+      } else {
+        req.guestId = uuid();
+      }
+      next();
+      return;
+    }
+
+    const hash: any = jwt.verify(auth, this.JWT_SECRET);
+
+    if (!hash) throw new HttpError("Authorization failed, Please login", 401);
+
+    //check user
+    const user = await prisma.user.findUnique({ where: { id: hash.id } });
     if (!user) throw new HttpError("User doesn't exist!", 404);
     if (user.status === "blocked") throw new HttpError("User is blocked by authority", 403);
 
     req.user = { id: hash?.id };
+    next();
+  };
+  validatePublicUser: RequestHandler = async (req, res, next) => {
+    const guestId = z.string().uuid().or(z.string().email()).optional().safeParse(req.headers["guestid"]).data;
+
+    if (guestId) {
+      req.guestId = guestId;
+    }
+
     next();
   };
 }

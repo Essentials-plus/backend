@@ -21,7 +21,7 @@ async function createWeeklyMeals() {
           meals: { connect: mealsId },
         },
       });
-      console.log(`Weekly meals created for week: ${week}, total meals added: ${mealsId.length}`);
+      console.log(`Weekly meals created for week:${week} | Total meals added:${mealsId.length}`);
     }
     await Utils.sleep(100);
   }

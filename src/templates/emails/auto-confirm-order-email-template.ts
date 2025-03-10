@@ -1,4 +1,5 @@
 import { env } from "../../env";
+import { getEmailFooter } from "../../utils";
 
 export const autoConfirmOrderEmailTemplate = ({
   dayNumber,
@@ -13,6 +14,8 @@ export const autoConfirmOrderEmailTemplate = ({
   title: string;
   totalOrderPlaced?: string | number;
 }) => {
+  const { css, html } = getEmailFooter();
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -69,6 +72,7 @@ export const autoConfirmOrderEmailTemplate = ({
             text-align: center;
             color: #999999;
         }
+            ${css}
     </style>
 </head>
 <body>
@@ -83,6 +87,8 @@ export const autoConfirmOrderEmailTemplate = ({
             <p>Week: ${weekNumber}</p>
             <p>Date: ${date}</p>
             ${typeof totalOrderPlaced !== "undefined" ? `<p>Total order placed: ${totalOrderPlaced}</p>` : ""}
+
+            ${html}
         </div>
         <div class="footer">
             <p>&copy; ${new Date().getFullYear()} ${env.APP_NAME}. All rights reserved.</p>

@@ -1,12 +1,4 @@
 //🧩Don't Edit this file.✨Generated in Wed Apr 17 2024 12:47:30 GMT+0600 (Bangladesh Standard Time)✨
-model Admin {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
 
 generator client {
   provider = "prisma-client-js"
@@ -15,6 +7,15 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Meal {
@@ -38,7 +39,7 @@ model Meal {
 
   weeklyMeals WeeklyMeal[]
 
-  orderMeals OrderMeal[]
+  @@index([mealName])
 }
 
 enum MealType {
@@ -62,12 +63,13 @@ model Ingredient {
   fiber         Int
   categoryId    String?
 
-  meals            Meal[]
-  category         IngredientCategory? @relation(fields: [categoryId], references: [id])
-  orderIngredients OrderIngredient[]
+  meals    Meal[]
+  category IngredientCategory? @relation(fields: [categoryId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([name])
 }
 
 model IngredientCategory {
@@ -77,10 +79,12 @@ model IngredientCategory {
   slug      String @unique
   sortOrder Int    @default(autoincrement())
 
-  sngredients Ingredient[]
+  ingredients Ingredient[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([name, slug])
 }
 
 enum IngredientUnitType {
@@ -99,10 +103,8 @@ model PreparationMethod {
   mealId String
   meal   Meal   @relation(fields: [mealId], references: [id])
 
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  OrderMeal   OrderMeal? @relation(fields: [orderMealId], references: [id])
-  orderMealId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Tips {
@@ -114,10 +116,8 @@ model Tips {
   mealId String
   meal   Meal   @relation(fields: [mealId], references: [id])
 
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  OrderMeal   OrderMeal? @relation(fields: [orderMealId], references: [id])
-  orderMealId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model WeeklyMeal {
@@ -127,96 +127,59 @@ model WeeklyMeal {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([week])
 }
 
 model Order {
+  id              String      @id @default(uuid())
+  amount          Float
+  shippingAmount  Float       @default(0)
+  coupon          Json?
+  orderId         String?     @unique
+  userId          String
+  shippingAddress Json
+  status          OrderStatus @default(processing)
+  sessionId       String?
+
+  user                       User                       @relation(fields: [userId], references: [id])
+  reviews                    ProductReview[]
+  productReviewOpportunities ProductReviewOpportunity[]
+  orderItems                 OrderItem[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  paidAt    DateTime?
+
+  @@index([amount])
+}
+
+model OrderItem {
   id String @id @default(uuid())
 
-  amount         Float
-  shippingAmount Float @default(0)
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
 
-  // couponId String?
-  // coupon   Coupon? @relation(fields: [couponId], references: [id])
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
-  coupon Json?
+  name        String
+  price       Int
+  quantity    Int
+  taxPercent  TaxPercent?
+  attributes  Json?
+  image       String
+  variationId String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
-  // products ProductCart[]
-
-  products Json
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-
-  status OrderStatus @default(processing)
+  @@index([orderId, productId, name, variationId])
 }
 
 enum OrderStatus {
   unpaid
   processing
   completed
-}
-
-model OrderMeal {
-  id String @id @default(uuid())
-
-  ingredients OrderIngredient[]
-
-  // meal   Meal   @relation(fields: [mealId], references: [id]) // meal 
-  // mealId String
-
-  meal              MealType
-  mealNumber        String // @Note: is it number or string?
-  mealName          String
-  preparationMethod PreparationMethod[]
-  cookingTime       String
-  tips              Tips[]
-
-  image String
-
-  kCalNeed Int
-
-  totalNeedOfKCal          Int
-  totalNeedOfProteins      Int
-  totalNeedOfCarbohydrates Int
-  totalNeedOfFats          Int
-  totalNeedOfFiber         Int
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  mealsForTheWeek   MealsForTheWeek? @relation(fields: [mealsForTheWeekId], references: [id])
-  mealsForTheWeekId String?
-  Meal              Meal?            @relation(fields: [mealId], references: [id])
-  mealId            String?
-}
-
-model OrderIngredient {
-  id String @id @default(uuid())
-
-  totalNeed Int
-
-  // ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
-  // ingredientId String
-
-  name          String
-  quantity      Int
-  unit          IngredientUnitType
-  kcal          Int
-  proteins      Int
-  carbohydrates Int
-  fats          Int
-  fiber         Int
-
-  orderMeal   OrderMeal? @relation(fields: [orderMealId], references: [id])
-  orderMealId String?
-
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  Ingredient   Ingredient? @relation(fields: [ingredientId], references: [id])
-  ingredientId String?
 }
 
 model UserPlan {
@@ -236,6 +199,8 @@ model UserPlan {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([numberOfDays, mealsPerDay, userId])
 }
 
 enum PlanStatus {
@@ -260,6 +225,8 @@ model PlanOrder {
   planId String?
 
   status PlanOrderStatus @default(confirmed)
+
+  @@index([totalAmount, week])
 }
 
 enum PlanOrderStatus {
@@ -272,64 +239,109 @@ enum TaxPercent {
   TAX21 @map("21")
 }
 
-model MealsForTheWeek {
-  id    String      @id @default(uuid())
-  day   Int
-  meals OrderMeal[]
-
-  // planOrder   PlanOrder? @relation(fields: [planOrderId], references: [id])
-  // planOrderId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 model Product {
-  id                   String      @id @default(uuid())
-  name                 String
-  slug                 String      @unique
-  description          String?
-  longDescription      String?
-  salePrice            Int?
-  regularPrice         Int?
-  images               String[]
-  stock                Int?
-  lowStockThreshold    Int?
-  categoryId           String?
-  faqs                 Json?
-  specs                Json?
-  showOnHomePageBanner Boolean     @default(false)
-  taxPercent           TaxPercent?
+  id                              String      @id @default(uuid())
+  name                            String
+  slug                            String      @unique
+  description                     String?
+  longDescription                 String?
+  salePrice                       Int?
+  regularPrice                    Int?
+  images                          String[]
+  stock                           Int?
+  lowStockThreshold               Int?
+  faqs                            Json?
+  specs                           Json?
+  showOnBestSellerSection         Boolean     @default(false)
+  showOnCartRecommendationSection Boolean     @default(false)
+  taxPercent                      TaxPercent?
+  linkedToId                      String?
+  attributesInfo                  Json?
+  lowestPrice                     Int?
+  highestPrice                    Int?
 
-  linkedProducts Product[] @relation("LinkedProducts")
-  linkedTo       Product?  @relation("LinkedProducts", fields: [linkedToId], references: [id])
-  linkedToId     String?
-
-  type           ProductType
-  productCart    ProductCart[]
-  attributes     ProductAttribute[]
-  attributeTerms ProductAttributeTerm[]
-  variations     ProductVariation[]
-  category       ProductCategory?       @relation(fields: [categoryId], references: [id])
+  linkedProducts           Product[]                  @relation("LinkedProducts")
+  linkedTo                 Product?                   @relation("LinkedProducts", fields: [linkedToId], references: [id])
+  reviews                  ProductReview[]
+  productReviewOpportunity ProductReviewOpportunity[]
+  type                     ProductType
+  productCart              ProductCart[]
+  attributes               ProductAttribute[]
+  attributeTerms           ProductAttributeTerm[]
+  variations               ProductVariation[]
+  categories               ProductCategory[]
+  spotlightsProductBanner  SpotlightsProductBanners?
+  orderedItems             OrderItem[]
 
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   lowStockNotifiedAt DateTime?
 
-  @@index([slug])
+  @@index([slug, name, description, salePrice, regularPrice, stock, showOnBestSellerSection, showOnCartRecommendationSection])
+}
+
+model ProductReview {
+  id        String  @id @default(uuid())
+  comment   String
+  rating    Float
+  productId String
+  userId    String
+  orderId   String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id])
+  order     Order   @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, rating, productId, orderId])
+}
+
+model ProductReviewOpportunity {
+  id String @id @default(uuid())
+
+  productId String?
+  userId    String
+  orderId   String
+
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id])
+  order   Order    @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, productId, orderId])
+}
+
+model SpotlightsProductBanners {
+  id        String  @id @default(uuid())
+  title     String
+  image     String
+  productId String  @unique
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ProductCategory {
-  id String @id @default(uuid())
-
-  name      String @unique
-  slug      String @unique
-  sortOrder Int    @default(autoincrement())
+  id               String            @id @default(uuid())
+  name             String            @unique
+  image            String?
+  description      String?
+  slug             String            @unique
+  sortOrder        Int               @default(autoincrement())
+  parentCategoryId String?
+  parentCategory   ProductCategory?  @relation("CategoryToParent", fields: [parentCategoryId], references: [id])
+  subCategories    ProductCategory[] @relation("CategoryToParent")
 
   products Product[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([name, slug])
 }
 
 enum ProductType {
@@ -342,19 +354,22 @@ model ProductVariation {
 
   termIds String[]
 
-  salePrice          Int?
-  regularPrice       Int?
-  stock              Int?
-  lowStockThreshold  Int?
-  image              String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  lowStockNotifiedAt DateTime?
+  salePrice              Int?
+  regularPrice           Int?
+  stock                  Int?
+  lowStockThreshold      Int?
+  image                  String?
+  imageSameAsVariationId String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  lowStockNotifiedAt     DateTime?
 
   terms       ProductAttributeTerm[]
-  product     Product?               @relation(fields: [productId], references: [id])
+  product     Product?               @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId   String?
   ProductCart ProductCart[]
+
+  @@index([productId, salePrice, regularPrice, stock])
 }
 
 model ProductAttribute {
@@ -363,8 +378,7 @@ model ProductAttribute {
   slug  String                 @unique
   terms ProductAttributeTerm[]
 
-  productId String?
-  product   Product? @relation(fields: [productId], references: [id])
+  products Product[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -383,8 +397,8 @@ model ProductAttributeTerm {
   attribute          ProductAttribute? @relation(fields: [productAttributeId], references: [id], onDelete: Cascade)
   productAttributeId String?
 
-  product   Product? @relation(fields: [productId], references: [id])
-  productId String?
+  products Product[]
+  // productId String?
 
   productVariation   ProductVariation? @relation(fields: [productVariationId], references: [id])
   productVariationId String?
@@ -398,17 +412,21 @@ model ProductCart {
   count Int @default(1)
 
   productId String
-  product   Product @relation(fields: [productId], references: [id])
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   user      User?   @relation(fields: [userId], references: [id])
   userId    String?
 
   variationId String?
-  variation   ProductVariation? @relation(fields: [variationId], references: [id])
+  variation   ProductVariation? @relation(fields: [variationId], references: [id], onDelete: Cascade)
+
+  guestId String?
 
   placed Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId, productId, guestId])
 }
 
 model Coupon {
@@ -428,6 +446,8 @@ model Coupon {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([code, policy, status])
 }
 
 enum CouponStatus {
@@ -480,12 +500,15 @@ model User {
   addition              String?
 
   // credentials
-  email     String     @unique
-  mobile    String?
-  password  String
-  zipCodeId String?
-  zipCode   ZipCode?   @relation(fields: [zipCodeId], references: [id])
-  status    UserStatus @default(active)
+  email                    String                     @unique
+  mobile                   String?
+  password                 String?
+  zipCodeId                String?
+  zipCode                  ZipCode?                   @relation("UserZipCode", fields: [zipCodeId], references: [id])
+  productDeliveryZipCode   String?
+  status                   UserStatus                 @default(active)
+  productReviews           ProductReview[]
+  productReviewOpportunity ProductReviewOpportunity[]
 
   access UserAccess @default(product)
 
@@ -501,6 +524,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   orders    Order[]
+
+  @@index([email, mobile, name, surname, zipCodeId, password])
 }
 
 enum UserAccess {
@@ -527,7 +552,9 @@ model ZipCode {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users User[]
+  users User[] @relation("UserZipCode")
+
+  @@index([zipCode, lockdownDay])
 }
 
 model UserNextWeekPlanPrice {
@@ -535,6 +562,15 @@ model UserNextWeekPlanPrice {
 
   userId String @unique
   user   User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RawData {
+  id         String @id @default(uuid())
+  identifier String @unique
+  data       Json
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

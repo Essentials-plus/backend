@@ -1,10 +1,11 @@
 import { Prisma } from "@prisma/client";
-import axios from "axios";
 import { RequestHandler } from "express";
+import { z } from "zod";
 import { prisma } from "../configs/database";
-import { env } from "../env";
+import Utils from "../utils";
 import ApiResponse from "../utils/ApiResponse";
 import HttpError from "../utils/HttpError";
+import { deleteGetValidatedZipCodeInfoCache } from "../utils/node-cache";
 import ZipCodeRangeValidator from "../validators/ZipCodeRangeValidator";
 
 class ZipCodeRangeController {
@@ -32,6 +33,8 @@ class ZipCodeRangeController {
       const zipCode = await prisma.zipCode.create({ data: { ...value } });
       res.status(200).send(this.apiResponse.success({ zipCode }, { message: "Postcode aangemaakt" }));
     }
+
+    deleteGetValidatedZipCodeInfoCache();
   };
 
   updateZipCodeRange: RequestHandler = async (req, res) => {
@@ -42,6 +45,7 @@ class ZipCodeRangeController {
 
     if (!zipCode) throw new HttpError("Postcode niet gevonden", 404);
 
+    deleteGetValidatedZipCodeInfoCache();
     res.status(200).send(this.apiResponse.success(zipCode, { message: "Postcode bijgewerkt" }));
   };
   deleteZipCodeRange: RequestHandler = async (req, res) => {
@@ -49,6 +53,8 @@ class ZipCodeRangeController {
 
     const zipCode = await prisma.zipCode.delete({ where: { id } });
     if (!zipCode) throw new HttpError("Postcode niet gevonden", 404);
+
+    deleteGetValidatedZipCodeInfoCache();
     res.status(200).send(this.apiResponse.success(zipCode, { message: "Postcode verwijderd" }));
   };
   getZipCodeRange: RequestHandler = async (req, res) => {
@@ -88,35 +94,17 @@ class ZipCodeRangeController {
   };
 
   checkZipCode: RequestHandler = async (req, res) => {
-    const zipCode = String(req.params.code).slice(0, 4);
+    const zipCode = String(req.params.code);
 
     const houseNumber = req.params.house;
-    if (!zipCode || !houseNumber) throw new HttpError("Postcode niet gevonden", 404);
-    if (zipCode.length < 4 || (req.params.code || "").length > 6) throw new HttpError("ongeldige postcode", 403);
+    const { skipDbCheck } = z
+      .object({
+        skipDbCheck: z.coerce.boolean().optional(),
+      })
+      .parse(req.query);
 
-    const zipCodeExists = await prisma.zipCode.findFirst({
-      where: {
-        zipCode: {
-          startsWith: zipCode,
-        },
-      },
-    });
+    const { zipcodeData } = await Utils.getValidatedZipCodeInfo({ zipCode, houseNumber, skipDbCheck });
 
-    if (!zipCodeExists) throw new HttpError("Uw postcode valt buiten bereik", 403);
-    let zipcodeData;
-    try {
-      const API_KEY = env.ZIPCODE_API_KEY;
-
-      const { data } = await axios.get(`https://api.postcodeapi.nu/v3/lookup/${zipCodeExists.zipCode}/${houseNumber}`, {
-        headers: {
-          "X-Api-Key": API_KEY,
-        },
-      });
-
-      zipcodeData = data;
-    } catch (error) {
-      throw new HttpError("Bron niet gevonden", 404);
-    }
     res.status(200).send(this.apiResponse.success(zipcodeData));
   };
 

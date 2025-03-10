@@ -45,14 +45,7 @@ class ProductValidator extends BaseValidator {
       .optional(),
     images: z.array(z.string().url()).min(1),
     type: z.nativeEnum(ProductType),
-    categoryId: z
-      .string()
-      .uuid()
-      .or(z.literal(""))
-      .optional()
-      .nullable()
-      .default("")
-      .transform((val) => (val === "" ? null : val)),
+    categoryIds: z.array(z.string().uuid()),
   });
 
   createSimpleProduct = z
@@ -86,6 +79,7 @@ class ProductValidator extends BaseValidator {
         attributes: z.array(
           z.object({
             id: z.string().uuid(),
+            appearance: z.string().optional().default("button"),
           }),
         ),
         attributeTermIds: z.array(z.string().uuid()),
@@ -99,7 +93,13 @@ class ProductValidator extends BaseValidator {
 
   createProductVariations = z.object({
     productId: this.validateUUID,
+    regenerateVariations: z.coerce.boolean().optional(),
     // attributeIdsGroups: z.array(z.array(z.string()).min(1)).min(1),
+  });
+
+  createProductVariation = z.object({
+    productId: this.validateUUID,
+    termIds: z.array(z.string().uuid()).min(1),
   });
   getProductVariations = z.object({
     termIds: z.array(z.string().uuid()).min(1),
@@ -123,6 +123,12 @@ class ProductValidator extends BaseValidator {
       lowStockThreshold: z
         .number()
         .positive()
+        .or(z.literal(""))
+        .nullable()
+        .transform((val) => (val === "" ? null : val)),
+      imageSameAsVariationId: z
+        .string()
+        .uuid()
         .or(z.literal(""))
         .nullable()
         .transform((val) => (val === "" ? null : val)),
@@ -158,7 +164,10 @@ class ProductValidator extends BaseValidator {
 
   createProductCategory = z.object({
     name: this.required_string,
+    description: z.string().trim().optional().nullable(),
+    image: z.string().url(),
     slug: this.required_string.optional(),
+    parentCategoryId: this.validateUUID.optional().nullable(),
   });
 
   updateProductCategory = this.createProductCategory.partial();
@@ -174,6 +183,11 @@ class ProductValidator extends BaseValidator {
       categoryId: this.validateUUID.optional(),
     })
     .optional();
+
+  createReview = z.object({
+    comment: z.string({ message: "Please enter your review" }).min(1, { message: "Please enter your review" }).max(500),
+    rating: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)], { message: "Please select a valid rating (1-5)" }),
+  });
 }
 
 export default ProductValidator;

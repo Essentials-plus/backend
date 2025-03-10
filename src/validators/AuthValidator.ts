@@ -13,6 +13,7 @@ class AuthValidator extends BaseValidator {
     surname: z.string().optional(),
     email: this.required_string.email().trim().toLowerCase(),
     password: this.strongPasswordSchema,
+    redirect: z.string().optional(),
   });
 
   forgotPassword = z.object({

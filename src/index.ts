@@ -4,6 +4,7 @@ import { CronJob } from "cron";
 import "dotenv/config";
 import express, { Router } from "express";
 import "express-async-errors";
+
 import "./configs/database";
 import { prisma } from "./configs/database";
 import { env } from "./env";
@@ -11,6 +12,7 @@ import routes from "./routes";
 import { webhookRouter } from "./routes/webhook";
 import OrderScheduler from "./schedulers/OrderScheduler";
 import { autoUpdatePendingPricePlanEmailTemplate } from "./templates/emails/auto-update-pending-price-plan-email-template";
+import { mealSelectionReminderEmailTemplate } from "./templates/emails/meal-selection-reminder-email-template";
 import Utils, { getNetherlandsDate } from "./utils";
 import { reportCronJobError } from "./utils/AnalyticsReport";
 import ErrorConfig from "./utils/ErrorConfig";
@@ -28,7 +30,7 @@ apiRouter.all("/", (_, res) => {
   res.send("Ok");
 });
 apiRouter.all("/health-check", (_, res) => {
-  console.log(`"/health-check" Received api call at ${new Date().toLocaleString()}`);
+  // console.log(`"/health-check" Received api call at ${new Date().toLocaleString()}`);
   res.send("Ok");
 });
 
@@ -38,6 +40,44 @@ app.use("/webhook", webhookRouter);
 app.use(apiRouter);
 
 app.use(ErrorConfig.ErrorHandler);
+
+// const first = async () => {
+//   const recipientEmails = ["mailtest6@hakanbaydar.com", ...env.SUPPORT_USER_EMAIL];
+//   const order = await prisma.order.findFirst({
+//     include: {
+//       orderItems: true,
+//     },
+//   });
+//   // try {
+//   //   // Send welcome email
+//   //   await sendEmailWithNodemailer(
+//   //     "Bestelling bevestigd!",
+//   //     recipientEmails,
+//   //     productOrderConfirmationEmailTemplate({
+//   //       user: {
+//   //         name: "Hakan",
+//   //         surname: "/Saymon",
+//   //       },
+//   //       order: order!,
+//   //     }),
+//   //   );
+//   //   console.log("Order confirmation email sent to:", recipientEmails);
+//   // } catch (error) {
+//   //   console.log("error sending confirmation email to:", recipientEmails);
+//   //   console.log(error);
+//   // }
+//   console.log(
+//     productOrderConfirmationEmailTemplate({
+//       user: {
+//         name: "Hakan",
+//         surname: "/Saymon",
+//       },
+//       order: order!,
+//     }),
+//   );
+// };
+
+// first();
 
 app.listen(env.PORT, () => {
   console.log("Server is running");
@@ -49,7 +89,7 @@ app.listen(env.PORT, () => {
       axios
         .get(`${env.API_SERVER_BASE_URL}/health-check`)
         .then(() => {
-          console.log(`"/health-check" api called at ${new Date().toLocaleString()}`);
+          // console.log(`"/health-check" api called at ${new Date().toLocaleString()}`);
         })
         .catch(() => {
           console.log(`"/health-check" api failed at ${new Date().toLocaleString()}`);
@@ -104,6 +144,71 @@ app.listen(env.PORT, () => {
         }
       } catch (error: any) {
         reportCronJobError(error?.message);
+      }
+    },
+    null,
+    true,
+  );
+
+  new CronJob(
+    "0 10 * * *", // Runs every day at 10:00 AM
+    async () => {
+      try {
+        const twoDaysFromNow = getNetherlandsDate().add(2, "days");
+        const twoDaysFromNowDayNumber = Utils.dayOfTheWeek(twoDaysFromNow);
+        const twoDaysFromNowWeekNumber = twoDaysFromNow.isoWeek();
+
+        const users = await prisma.user.findMany({
+          where: {
+            zipCode: {
+              lockdownDay: {
+                equals: twoDaysFromNowDayNumber,
+              },
+            },
+            plan: {
+              confirmOrderWeek: twoDaysFromNowWeekNumber,
+              status: "active",
+            },
+          },
+        });
+
+        for await (const user of users) {
+          try {
+            await sendEmailWithNodemailer(
+              "Vergeet niet je maaltijden te selecteren – nog 2 dagen!",
+              user.email,
+              mealSelectionReminderEmailTemplate({ user }),
+            );
+            await Utils.sleep(1000);
+          } catch (error) {
+            console.log(error);
+          }
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    },
+    null,
+    true,
+  );
+
+  new CronJob(
+    "30 0 * * 1", // Runs every Monday at 12:30 AM
+    async () => {
+      try {
+        const currentWeekNumber = Utils.getCurrentWeekNumber();
+        await prisma.userPlan.updateMany({
+          data: {
+            confirmOrderWeek: currentWeekNumber,
+          },
+          where: {
+            confirmOrderWeek: {
+              lt: currentWeekNumber,
+            },
+          },
+        });
+      } catch (error) {
+        console.log(error);
       }
     },
     null,

@@ -1,6 +1,9 @@
 import { env } from "../../env";
+import { getEmailFooter } from "../../utils";
 
 export const autoConfirmOrderFailedForAUser = ({ user, reason }: { user: any; reason: string }) => {
+  const { css, html } = getEmailFooter();
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -57,6 +60,7 @@ export const autoConfirmOrderFailedForAUser = ({ user, reason }: { user: any; re
             text-align: center;
             color: #999999;
         }
+            ${css}
     </style>
 </head>
 <body>
@@ -71,6 +75,8 @@ export const autoConfirmOrderFailedForAUser = ({ user, reason }: { user: any; re
             <pre>
                 ${JSON.stringify(user, null, 2)}
             </pre>
+
+            ${html}
         </div>
         <div class="footer">
             <p>&copy; ${new Date().getFullYear()} ${env.APP_NAME}. All rights reserved.</p>

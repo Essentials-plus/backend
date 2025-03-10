@@ -42,6 +42,7 @@ class AdminAuthController {
   // @POST="/admin/password/forgot"
   forgotPassword: RequestHandler = async (req, res) => {
     const { email } = await this.validators.forgotPassword.parseAsync(req.body);
+
     const admin = await prisma.admin.findUnique({ where: { email } });
 
     if (!admin) throw new HttpError("No admin found with this email", 404);
