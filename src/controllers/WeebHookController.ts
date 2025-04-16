@@ -114,7 +114,7 @@ class WeebHookController {
                 console.log(error);
               }
 
-              const recipientEmails = [user.email, ...env.SUPPORT_USER_EMAIL];
+              const recipientEmails = [user.email];
               try {
                 // Send welcome email
                 await sendEmailWithNodemailer(
