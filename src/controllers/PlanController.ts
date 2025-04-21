@@ -165,7 +165,6 @@ class PlanController {
     }
 
     const { isAfterLockdownDay } = await Utils.afterLockdownDay(userId);
-    // console.log({ isAfterLockdownDay, day: Utils.getNextSundayDaysCountISO(isAfterLockdownDay) });
 
     const currency_type = env.CURRENCY_TYPE;
 
@@ -418,12 +417,11 @@ class PlanController {
 
     let plan;
     await prisma.$transaction(async (tx) => {
-      await this.paymentUtils.updateSubscription(userId);
-
       plan = await tx.userPlan.update({
         where: { id: findPlan.id },
         data: data,
       });
+      await this.paymentUtils.updateSubscription(userId);
     });
 
     res.status(200).send(
@@ -536,14 +534,14 @@ class PlanController {
 
     let updatedUserPlan;
     await prisma.$transaction(async (tx) => {
-      await this.paymentUtils.updateSubscription(user.id);
-
       updatedUserPlan = await tx.userPlan.update({
         where: { id: userPlan.id },
         data: {
           confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(currentWeek),
         },
       });
+
+      await this.paymentUtils.updateSubscription(user.id);
     });
 
     try {

@@ -8,13 +8,11 @@ import Utils, { getNetherlandsDate } from "../utils";
 import { reportCronJobError } from "../utils/AnalyticsReport";
 import CalorieCalCulator from "../utils/CalorieCalculator";
 import HttpError from "../utils/HttpError";
-import PaymentUtils from "../utils/PaymentUtils";
 import { sendEmailWithNodemailer } from "../utils/sender";
 import PlanValidator from "../validators/PlanValidator";
 
 export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isTriggeredManually?: boolean } = {}) => {
   const validators = new PlanValidator();
-  const paymentUtils = new PaymentUtils();
 
   try {
     const oneDayBehind = getNetherlandsDate().subtract(1, "day");
@@ -131,7 +129,7 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
 
         await prisma.$transaction(async (tx) => {
           await tx.userNextWeekPlanPrice.deleteMany({ where: { userId: user.id } });
-          await paymentUtils.updateSubscription(user.id);
+          // await paymentUtils.updateSubscription(user.id);
           const planOrder = await tx.planOrder.create({
             data: {
               mealsForTheWeek,
