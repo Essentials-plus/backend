@@ -104,6 +104,7 @@ class PaymentUtils {
       expand: ["latest_invoice"],
       items: [...items_id_list.map((v) => ({ id: v.id, deleted: true })), { price: new_price.id }],
       proration_behavior: "none",
+      trial_end: subscription.trial_end && subscription.trial_end > Math.floor(Date.now() / 1000) ? subscription.trial_end : undefined,
       ...subscriptionUpdateParams,
     });
     await prisma.userNextWeekPlanPrice.deleteMany({ where: { userId: user.id } });

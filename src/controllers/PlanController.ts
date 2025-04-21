@@ -379,12 +379,14 @@ class PlanController {
           interval: "week",
         },
       });
+      const subscription = list.data[0];
 
       await stripe.subscriptions.update(sub_id, {
         expand: ["latest_invoice"],
         items: [...items_id_list.map((v) => ({ id: v.id, deleted: true })), { price: new_price.id }],
         proration_behavior: "none",
         cancel_at_period_end: false,
+        trial_end: subscription.trial_end ?? undefined, // ✅ Preserve trial
       });
     }
 
@@ -414,12 +416,15 @@ class PlanController {
 
     if (!findPlan) throw new HttpError("Plan vereist", 404);
 
-    const plan = await prisma.userPlan.update({
-      where: { id: findPlan.id },
-      data: data,
-    });
+    let plan;
+    await prisma.$transaction(async (tx) => {
+      await this.paymentUtils.updateSubscription(userId);
 
-    await this.paymentUtils.updateSubscription(userId);
+      plan = await tx.userPlan.update({
+        where: { id: findPlan.id },
+        data: data,
+      });
+    });
 
     res.status(200).send(
       this.apiResponse.success(plan, {
@@ -529,14 +534,17 @@ class PlanController {
       },
     });
 
-    const updatedUserPlan = await prisma.userPlan.update({
-      where: { id: userPlan.id },
-      data: {
-        confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(currentWeek),
-      },
-    });
+    let updatedUserPlan;
+    await prisma.$transaction(async (tx) => {
+      await this.paymentUtils.updateSubscription(user.id);
 
-    await this.paymentUtils.updateSubscription(user.id);
+      updatedUserPlan = await tx.userPlan.update({
+        where: { id: userPlan.id },
+        data: {
+          confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(currentWeek),
+        },
+      });
+    });
 
     try {
       // Send welcome email
