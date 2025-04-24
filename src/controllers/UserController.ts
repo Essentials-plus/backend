@@ -113,7 +113,11 @@ class UserController {
       if (!zipCodeExists) throw new HttpError("Uw postcode valt buiten bereik", 403);
 
       try {
-        const { zipcodeData } = await Utils.getValidatedZipCodeInfo({ zipCode: zipCodeExists.zipCode, houseNumber: value.nr!, skipDbCheck: true });
+        const { zipcodeData } = await Utils.getValidatedZipCodeInfo({
+          zipCode: value.zipCode.length === 6 ? value.zipCode : zipCodeExists.zipCode,
+          houseNumber: value.nr!,
+          skipDbCheck: true,
+        });
 
         value.city = zipcodeData?.city;
         value.address = zipcodeData?.street;
