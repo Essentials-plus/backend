@@ -3,7 +3,7 @@ import { prisma } from "../configs/database";
 import { env } from "../env";
 import { mealWelcomeConfirmationEmailTemplate } from "../templates/emails/meal-welcome-confirmation-email-template";
 import { weeklyMealConfirmationEmailTemplate } from "../templates/emails/weekly-meal-confirmation-email-template";
-import Utils, { getNetherlandsDate } from "../utils";
+import Utils from "../utils";
 import ApiResponse from "../utils/ApiResponse";
 import CalorieCalCulator from "../utils/CalorieCalculator";
 import HttpError from "../utils/HttpError";
@@ -551,11 +551,7 @@ class PlanController {
         user.email,
         weeklyMealConfirmationEmailTemplate({
           user: user,
-          deliveryDate: Utils.getNextDeliveryDate(
-            getNetherlandsDate().isoWeekday() === user.zipCode?.lockdownDay!
-              ? getNetherlandsDate().toDate()
-              : Utils.getNextLockdownDate(user.zipCode?.lockdownDay!),
-          ).format("dddd, DD/MM/YYYY"),
+          deliveryDate: Utils.getNextDeliveryDate(Utils.getNextLockdownDate(user.zipCode?.lockdownDay!)).format("dddd, DD/MM/YYYY"),
           numberOfDays: user.plan.numberOfDays,
           totalCaloriesInThisWeek: Math.round(userKcal * user.plan.numberOfDays),
           totalMealsInThisWeek: Math.round(user.plan.numberOfDays * user.plan.mealsPerDay),

@@ -155,11 +155,7 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
               user.email,
               weeklyMealConfirmationEmailTemplate({
                 user: user,
-                deliveryDate: Utils.getNextDeliveryDate(
-                  oneDayBehind.isoWeekday() === user.zipCode?.lockdownDay!
-                    ? oneDayBehind.toDate()
-                    : Utils.getNextLockdownDate(user.zipCode?.lockdownDay!),
-                ).format("dddd, DD/MM/YYYY"),
+                deliveryDate: Utils.getNextDeliveryDate(Utils.getNextLockdownDate(user.zipCode?.lockdownDay!)).format("dddd, DD/MM/YYYY"),
                 numberOfDays: userPlan.numberOfDays,
                 totalCaloriesInThisWeek: Math.round(userKcal * userPlan.numberOfDays),
                 totalMealsInThisWeek: Math.round(userPlan.numberOfDays * userPlan.mealsPerDay),
