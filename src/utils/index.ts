@@ -266,7 +266,7 @@ class Utils {
     // Calculate days until the next lockdown day
     const daysUntilLockdown = lockDownDay > todayDay ? lockDownDay - todayDay : 7 - (todayDay - lockDownDay);
 
-    const nextLockdownDate = today.add(daysUntilLockdown, "days");
+    const nextLockdownDate = today.clone().add(daysUntilLockdown, "days");
 
     return nextLockdownDate.toDate(); // ISO Netherlands format
   };
