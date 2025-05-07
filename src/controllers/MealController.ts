@@ -595,7 +595,7 @@ class MealController {
     const date = getNetherlandsDate().isoWeek(week).isoWeekday(user.zipCode?.lockdownDay!).endOf("day");
     const now = getNetherlandsDate();
 
-    const isOrder = activeWeek === currentUserOrderWeek && !isAlreadyPlaceAnOrderForThisWeek && now.isBefore(date);
+    const isOrder = currentWeek === currentUserOrderWeek && !isAlreadyPlaceAnOrderForThisWeek && now.isBefore(date);
 
     // console.log({
     //   isBefore: now.isBefore(date),

@@ -460,6 +460,8 @@ class PlanController {
 
     const { currentWeek, isAfterLockdownDay } = await Utils.afterLockdownDay(userPlan.userId);
 
+    console.log({ s: Utils.getNextConfirmOrderWeekNumber(currentWeek) });
+
     const isAlreadyPlaceAnOrderForThisWeek = await prisma.planOrder.findFirst({
       where: {
         week: currentWeek,
@@ -518,53 +520,54 @@ class PlanController {
       await Utils.sleep(100);
     }
 
-    const planOrder = await prisma.planOrder.create({
-      data: {
-        mealsForTheWeek: mealsForTheWeek,
-        week: currentWeek,
-        totalAmount: totalPrice,
-        shippingAmount,
-        plan: {
-          connect: {
-            id: userPlan.id,
+    const [planOrder, updatedUserPlan] = await prisma.$transaction([
+      prisma.planOrder.create({
+        data: {
+          mealsForTheWeek: mealsForTheWeek,
+          week: currentWeek,
+          totalAmount: totalPrice,
+          shippingAmount,
+          plan: {
+            connect: {
+              id: userPlan.id,
+            },
           },
         },
-      },
-    });
+      }),
 
-    let updatedUserPlan;
-    await prisma.$transaction(async (tx) => {
-      updatedUserPlan = await tx.userPlan.update({
+      prisma.userPlan.update({
         where: { id: userPlan.id },
         data: {
           confirmOrderWeek: Utils.getNextConfirmOrderWeekNumber(currentWeek),
         },
-      });
+      }),
 
-      await this.paymentUtils.updateSubscription(user.id);
-    });
+      // this.paymentUtils.updateSubscription(user.id),
+    ]);
 
-    try {
-      // Send welcome email
-      sendEmailWithNodemailer(
-        "Uw wekelijkse maaltijdbevestiging",
-        user.email,
-        weeklyMealConfirmationEmailTemplate({
-          user: user,
-          deliveryDate: Utils.getNextDeliveryDate(
-            getNetherlandsDate().isoWeekday() === user.zipCode?.lockdownDay!
-              ? getNetherlandsDate().toDate()
-              : Utils.getNextLockdownDate(user.zipCode?.lockdownDay!),
-          ).format("dddd, DD/MM/YYYY"),
-          numberOfDays: user.plan.numberOfDays,
-          totalCaloriesInThisWeek: Math.round(userKcal * user.plan.numberOfDays),
-          totalMealsInThisWeek: Math.round(user.plan.numberOfDays * user.plan.mealsPerDay),
-          weekNumber: currentWeek,
-          orderId: planOrder.id,
-        }),
-      );
-    } catch (error) {
-      console.log(error);
+    if (planOrder) {
+      try {
+        // Send welcome email
+        sendEmailWithNodemailer(
+          "Uw wekelijkse maaltijdbevestiging",
+          user.email,
+          weeklyMealConfirmationEmailTemplate({
+            user: user,
+            deliveryDate: Utils.getNextDeliveryDate(
+              getNetherlandsDate().isoWeekday() === user.zipCode?.lockdownDay!
+                ? getNetherlandsDate().toDate()
+                : Utils.getNextLockdownDate(user.zipCode?.lockdownDay!),
+            ).format("dddd, DD/MM/YYYY"),
+            numberOfDays: user.plan.numberOfDays,
+            totalCaloriesInThisWeek: Math.round(userKcal * user.plan.numberOfDays),
+            totalMealsInThisWeek: Math.round(user.plan.numberOfDays * user.plan.mealsPerDay),
+            weekNumber: currentWeek,
+            orderId: planOrder.id,
+          }),
+        );
+      } catch (error) {
+        console.log(error);
+      }
     }
 
     res.status(200).send(this.apiResponse.success({ planOrder, userPlan: updatedUserPlan }, { message: "Plan order confirmed" }));
