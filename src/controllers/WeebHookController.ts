@@ -22,6 +22,33 @@ class WeebHookController {
 
     // Handle the event based on its type
     switch (event.type) {
+      case "setup_intent.succeeded": {
+        const setupIntent = event.data.object as Stripe.SetupIntent;
+        const customerId = setupIntent.customer;
+        const paymentMethodId = setupIntent.payment_method;
+        console.log({ setupIntent, customerId, paymentMethodId });
+
+        if (customerId && paymentMethodId) {
+          try {
+            // Attach payment method
+            await stripe.paymentMethods.attach(paymentMethodId as string, {
+              customer: customerId as string,
+            });
+
+            // Set as default payment method for future invoices
+            await stripe.customers.update(customerId as string, {
+              invoice_settings: { default_payment_method: paymentMethodId as string },
+            });
+
+            console.log(`Payment method ${paymentMethodId} attached to customer ${customerId}`);
+            res.sendStatus(200);
+          } catch (err) {
+            console.error(`Failed to attach payment method:`, err);
+            res.sendStatus(500);
+          }
+        }
+        break;
+      }
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = invoice.customer as string;
@@ -36,6 +63,13 @@ class WeebHookController {
               where: { userId: user.id },
               data: { status: "canceled" },
             });
+
+            // Cancel the subscription
+            if (typeof invoice.subscription === "string") {
+              await stripe.subscriptions.cancel(invoice.subscription);
+            } else {
+              console.error("Subscription ID is not a string:", invoice.subscription);
+            }
           }
 
           // Notify user or take further action, e.g., sending an email
