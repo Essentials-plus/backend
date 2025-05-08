@@ -25,11 +25,28 @@ class WeebHookController {
       case "setup_intent.succeeded": {
         const setupIntent = event.data.object as Stripe.SetupIntent;
         const customerId = setupIntent.customer;
-        const paymentMethodId = setupIntent.payment_method;
-        console.log({ setupIntent, customerId, paymentMethodId });
+        let paymentMethodId = setupIntent.payment_method;
+
+        console.log({
+          setupIntentCustomer: customerId,
+          setupIntentStatus: setupIntent.status,
+        });
 
         if (customerId && paymentMethodId) {
           try {
+            if (setupIntent.payment_method_types.includes("ideal")) {
+              const paymentMethods = await stripe.paymentMethods.list({
+                customer: customerId as string,
+                type: "sepa_debit", // or 'ideal' or 'card'
+              });
+
+              const SEPA_DEBIT = paymentMethods.data.find((paymentMethod) => paymentMethod.type === "sepa_debit");
+
+              if (SEPA_DEBIT) {
+                paymentMethodId = SEPA_DEBIT?.id;
+              }
+            }
+
             // Attach payment method
             await stripe.paymentMethods.attach(paymentMethodId as string, {
               customer: customerId as string,
@@ -41,10 +58,8 @@ class WeebHookController {
             });
 
             console.log(`Payment method ${paymentMethodId} attached to customer ${customerId}`);
-            res.sendStatus(200);
           } catch (err) {
             console.error(`Failed to attach payment method:`, err);
-            res.sendStatus(500);
           }
         }
         break;
