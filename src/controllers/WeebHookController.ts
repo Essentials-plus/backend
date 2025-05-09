@@ -37,13 +37,12 @@ class WeebHookController {
             if (setupIntent.payment_method_types.includes("ideal")) {
               const paymentMethods = await stripe.paymentMethods.list({
                 customer: customerId as string,
-                type: "sepa_debit", // or 'ideal' or 'card'
               });
 
-              const SEPA_DEBIT = paymentMethods.data.find((paymentMethod) => paymentMethod.type === "sepa_debit");
+              const firstPaymentMethod = paymentMethods.data[0];
 
-              if (SEPA_DEBIT) {
-                paymentMethodId = SEPA_DEBIT?.id;
+              if (firstPaymentMethod) {
+                paymentMethodId = firstPaymentMethod?.id;
               }
             }
 
