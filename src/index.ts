@@ -41,7 +41,7 @@ app.use(apiRouter);
 app.use(ErrorConfig.ErrorHandler);
 
 app.listen(env.PORT, () => {
-  console.log("Server is running");
+  console.log(`Server is running on http://localhost:${env.PORT}`);
   new OrderScheduler();
 
   // new CronJob(
