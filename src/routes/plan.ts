@@ -39,6 +39,7 @@ adminRouter.get("/", planController.getPlans);
 adminRouter.get("/order", planController.getPlanOrders);
 adminRouter.get("/order/:id", planController.getPlanOrderById);
 adminRouter.put("/order/:id", planController.updatePlanOrder);
+adminRouter.delete("/order/:id", planController.deletePlanOrder);
 adminRouter.get("/order/current", planController.getCurrentWeekPlanOrders);
 
 export default { userRouter, adminRouter };

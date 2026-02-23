@@ -657,6 +657,52 @@ class PlanController {
     res.status(200).send(this.apiResponse.success(order));
   };
 
+  deletePlanOrder: RequestHandler = async (req, res) => {
+    const id = await this.validators.validateUUID.parseAsync(req.params?.id);
+
+    // Find the order with plan details
+    const order = await prisma.planOrder.findUnique({
+      where: { id },
+      include: {
+        plan: {
+          select: {
+            id: true,
+            userId: true,
+            confirmOrderWeek: true,
+          },
+        },
+      },
+    });
+
+    if (!order) throw new HttpError("Bestelling niet gevonden", 404);
+    if (!order.plan) throw new HttpError("Plan niet gevonden voor deze bestelling", 404);
+
+    const orderWeek = order.week;
+    const planId = order.plan.id;
+
+    // Delete the order and reset confirmOrderWeek in a transaction
+    await prisma.$transaction([
+      prisma.planOrder.delete({
+        where: { id },
+      }),
+      prisma.userPlan.update({
+        where: { id: planId },
+        data: {
+          confirmOrderWeek: orderWeek,
+        },
+      }),
+    ]);
+
+    res
+      .status(200)
+      .send(
+        this.apiResponse.success(
+          { deletedOrderId: id, orderWeek },
+          { message: "Bestelling succesvol verwijderd. Gebruiker kan nu opnieuw bestellen voor week " + orderWeek },
+        ),
+      );
+  };
+
   getCurrentWeekPlanOrders: RequestHandler = async (req, res) => {
     const currentWeek = Utils.getCurrentWeekNumber();
     const paginationOptions = await this.validators.validatePagination.parseAsync(req.query);
