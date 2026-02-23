@@ -532,6 +532,9 @@ class MealController {
 
     const week = await z.coerce.number().parseAsync(req.query.week);
 
+    // Auto-fix stale confirmOrderWeek if needed
+    await Utils.autoFixStaleUserPlan(userId);
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {

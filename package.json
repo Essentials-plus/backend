@@ -17,7 +17,8 @@
     "seed:products": "ts-node src/seeds/seed-product.ts",
     "seed:zipcode": "ts-node src/seeds/seed-zipcode.ts",
     "seed:all": "yarn seed:admin & yarn seed:meals & yarn seed:products & yarn seed:zipcode",
-    "migrate:dev": "npx prisma migrate dev --name init"
+    "migrate:dev": "npx prisma migrate dev --name init",
+    "fix:stale-weeks": "ts-node src/scripts/fix-stale-confirm-order-weeks.ts"
   },
   "husky": {
     "hooks": {

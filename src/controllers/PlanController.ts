@@ -23,6 +23,10 @@ class PlanController {
 
   getPlan: RequestHandler = async (req, res) => {
     const userId = await this.validators.validateUUID.parseAsync(req.user?.id);
+
+    // Auto-fix stale confirmOrderWeek if needed
+    await Utils.autoFixStaleUserPlan(userId);
+
     const plan = await prisma.userPlan.findUnique({ where: { userId } });
     if (!plan) throw new HttpError("Plan niet gevonden", 404);
     res.status(200).send(this.apiResponse.success(plan));
@@ -433,6 +437,9 @@ class PlanController {
 
   confirmPlanOrder: RequestHandler = async (req, res) => {
     const userId = await this.validators.validateUUID.parseAsync(req.user?.id);
+
+    // Auto-fix stale confirmOrderWeek if needed
+    await Utils.autoFixStaleUserPlan(userId);
 
     const user = await prisma.user.findUnique({ where: { id: userId }, include: { plan: true, zipCode: true } });
 

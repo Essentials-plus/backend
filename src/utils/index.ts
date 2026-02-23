@@ -45,6 +45,44 @@ class Utils {
     return currentConfirmOrderWeek + 1 > 52 ? 1 : currentConfirmOrderWeek + 1;
   }
 
+  /**
+   * Detects if a confirmOrderWeek is likely from a previous year.
+   * This handles year boundary issues where week 52 appears greater than week 1-15.
+   * @param confirmOrderWeek - The week number to check
+   * @param currentWeek - The current week number (defaults to current week)
+   * @returns true if the confirmOrderWeek is likely stale/from previous year
+   */
+  static isStaleConfirmOrderWeek(confirmOrderWeek: number | null | undefined, currentWeek?: number): boolean {
+    if (!confirmOrderWeek) return false;
+
+    const current = currentWeek ?? this.getCurrentWeekNumber();
+
+    // If confirmOrderWeek is significantly higher than current week (e.g., week 52 vs week 7),
+    // it's likely from the previous year
+    // We use threshold of 40 weeks difference to detect year boundary issues
+    return confirmOrderWeek > 40 && current < 15 && confirmOrderWeek > current;
+  }
+
+  /**
+   * Checks if a confirmOrderWeek needs updating and returns the correct week number.
+   * Handles both normal outdated weeks and year boundary issues.
+   * @param confirmOrderWeek - The week number to validate
+   * @param currentWeek - The current week number (defaults to current week)
+   * @returns the current week if outdated/stale, otherwise the original week
+   */
+  static getValidatedConfirmOrderWeek(confirmOrderWeek: number | null | undefined, currentWeek?: number): number {
+    const current = currentWeek ?? this.getCurrentWeekNumber();
+
+    if (!confirmOrderWeek) return current;
+
+    // Check if it's stale (from previous year) OR simply outdated (less than current)
+    if (this.isStaleConfirmOrderWeek(confirmOrderWeek, current) || confirmOrderWeek < current) {
+      return current;
+    }
+
+    return confirmOrderWeek;
+  }
+
   static dayOfTheWeek(d?: Date | string | Moment) {
     const getDate = getNetherlandsDate(d);
     const dayNumber = getDate.isoWeekday();
@@ -274,6 +312,44 @@ class Utils {
   static getNextDeliveryDate = (date: Date) => {
     return moment(date).add(2, "days");
   };
+
+  /**
+   * Auto-fixes stale confirmOrderWeek for a user's plan if needed.
+   * This should be called when users access their plan data to ensure they're not stuck on old weeks.
+   * @param userId - The user ID to check and fix
+   * @returns true if the plan was updated, false otherwise
+   */
+  static async autoFixStaleUserPlan(userId: string): Promise<boolean> {
+    try {
+      const userPlan = await prisma.userPlan.findUnique({
+        where: { userId },
+        select: { id: true, confirmOrderWeek: true },
+      });
+
+      if (!userPlan) {
+        return false;
+      }
+
+      const currentWeek = this.getCurrentWeekNumber();
+      const needsUpdate =
+        this.isStaleConfirmOrderWeek(userPlan.confirmOrderWeek, currentWeek) ||
+        (userPlan.confirmOrderWeek !== null && userPlan.confirmOrderWeek < currentWeek);
+
+      if (needsUpdate) {
+        await prisma.userPlan.update({
+          where: { id: userPlan.id },
+          data: { confirmOrderWeek: currentWeek },
+        });
+        console.log(`Auto-fixed stale plan for user ${userId}: ${userPlan.confirmOrderWeek} -> ${currentWeek}`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error(`Error auto-fixing plan for user ${userId}:`, error);
+      return false;
+    }
+  }
 }
 
 export default Utils;

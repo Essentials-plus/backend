@@ -158,16 +158,35 @@ app.listen(env.PORT, () => {
     async () => {
       try {
         const currentWeekNumber = Utils.getCurrentWeekNumber();
-        await prisma.userPlan.updateMany({
-          data: {
-            confirmOrderWeek: currentWeekNumber,
-          },
-          where: {
-            confirmOrderWeek: {
-              lt: currentWeekNumber,
-            },
-          },
+
+        // Get all plans that need updating
+        const plansToUpdate = await prisma.userPlan.findMany({
+          select: { id: true, confirmOrderWeek: true },
         });
+
+        // Filter plans that are outdated or stale (handles year boundaries)
+        const stalePlanIds = plansToUpdate
+          .filter((plan) => {
+            const needsUpdate =
+              Utils.isStaleConfirmOrderWeek(plan.confirmOrderWeek, currentWeekNumber) ||
+              (plan.confirmOrderWeek !== null && plan.confirmOrderWeek < currentWeekNumber);
+            return needsUpdate;
+          })
+          .map((plan) => plan.id);
+
+        if (stalePlanIds.length > 0) {
+          await prisma.userPlan.updateMany({
+            data: {
+              confirmOrderWeek: currentWeekNumber,
+            },
+            where: {
+              id: {
+                in: stalePlanIds,
+              },
+            },
+          });
+          console.log(`Updated ${stalePlanIds.length} stale user plans to week ${currentWeekNumber}`);
+        }
       } catch (error) {
         console.log(error);
       }
