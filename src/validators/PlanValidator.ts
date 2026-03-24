@@ -49,6 +49,17 @@ class PlanValidator extends BaseValidator {
     .partial();
 
   updatePlan = this.createPlan.partial();
+
+  getPlanOrdersFilter = z
+    .object({
+      lockdownDate: z.string(),
+      deliveryDate: z.string(),
+      lockdownDateFrom: z.string(),
+      lockdownDateTo: z.string(),
+      deliveryDateFrom: z.string(),
+      deliveryDateTo: z.string(),
+    })
+    .partial();
 }
 
 export default PlanValidator;

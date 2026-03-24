@@ -130,12 +130,16 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
         await prisma.$transaction(async (tx) => {
           await tx.userNextWeekPlanPrice.deleteMany({ where: { userId: user.id } });
           // await paymentUtils.updateSubscription(user.id);
+          const lockdownDate = oneDayBehind.toDate();
+          const deliveryDate = Utils.getNextDeliveryDate(lockdownDate).toDate();
           const planOrder = await tx.planOrder.create({
             data: {
               mealsForTheWeek,
               week: oneDayBehindWeekNumber,
               totalAmount: totalPrice,
               shippingAmount,
+              lockdownDate,
+              deliveryDate,
               plan: {
                 connect: {
                   id: userPlan.id,

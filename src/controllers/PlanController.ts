@@ -527,6 +527,12 @@ class PlanController {
       await Utils.sleep(100);
     }
 
+    const lockdownDate =
+      getNetherlandsDate().isoWeekday() === user.zipCode?.lockdownDay!
+        ? getNetherlandsDate().toDate()
+        : Utils.getNextLockdownDate(user.zipCode?.lockdownDay!);
+    const deliveryDate = Utils.getNextDeliveryDate(lockdownDate).toDate();
+
     const [planOrder, updatedUserPlan] = await prisma.$transaction([
       prisma.planOrder.create({
         data: {
@@ -534,6 +540,8 @@ class PlanController {
           week: currentWeek,
           totalAmount: totalPrice,
           shippingAmount,
+          lockdownDate,
+          deliveryDate,
           plan: {
             connect: {
               id: userPlan.id,
@@ -584,32 +592,74 @@ class PlanController {
 
   getPlanOrders: RequestHandler = async (req, res) => {
     const paginationOptions = await this.validators.validatePagination.parseAsync(req.query);
-    const [planOrder, meta] = await prisma.planOrder
-      .paginate({
-        select: {
-          week: true,
-          id: true,
-          status: true,
-          createdAt: true,
-          totalAmount: true,
-          plan: {
-            select: {
-              user: {
+    const filters = await this.validators.getPlanOrdersFilter.parseAsync(req.query);
+
+    const where: Record<string, any> = {};
+
+    if (filters.lockdownDate) {
+      const date = getNetherlandsDate(filters.lockdownDate);
+      where.lockdownDate = { gte: date.clone().startOf("day").toDate(), lte: date.clone().endOf("day").toDate() };
+    } else if (filters.lockdownDateFrom || filters.lockdownDateTo) {
+      where.lockdownDate = {};
+      if (filters.lockdownDateFrom) where.lockdownDate.gte = getNetherlandsDate(filters.lockdownDateFrom).startOf("day").toDate();
+      if (filters.lockdownDateTo) where.lockdownDate.lte = getNetherlandsDate(filters.lockdownDateTo).endOf("day").toDate();
+    }
+
+    if (filters.deliveryDate) {
+      const date = getNetherlandsDate(filters.deliveryDate);
+      where.deliveryDate = { gte: date.clone().startOf("day").toDate(), lte: date.clone().endOf("day").toDate() };
+    } else if (filters.deliveryDateFrom || filters.deliveryDateTo) {
+      where.deliveryDate = {};
+      if (filters.deliveryDateFrom) where.deliveryDate.gte = getNetherlandsDate(filters.deliveryDateFrom).startOf("day").toDate();
+      if (filters.deliveryDateTo) where.deliveryDate.lte = getNetherlandsDate(filters.deliveryDateTo).endOf("day").toDate();
+    }
+
+    const planOrderQuery = {
+      where,
+      [typeof paginationOptions.page === "number" ? "select" : "include"]:
+        typeof paginationOptions.page === "number"
+          ? {
+              week: true,
+              id: true,
+              status: true,
+              createdAt: true,
+              totalAmount: true,
+              lockdownDate: true,
+              deliveryDate: true,
+              plan: {
                 select: {
-                  name: true,
-                  surname: true,
+                  user: {
+                    select: {
+                      name: true,
+                      surname: true,
+                    },
+                  },
+                },
+              },
+            }
+          : {
+              plan: {
+                include: {
+                  user: {
+                    include: {
+                      zipCode: true,
+                    },
+                  },
                 },
               },
             },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      })
-      .withPages(paginationOptions);
+      orderBy: {
+        createdAt: "desc",
+      },
+    } as const;
+    if (paginationOptions.page) {
+      const [planOrder, meta] = await prisma.planOrder.paginate(planOrderQuery).withPages(paginationOptions);
 
-    res.status(200).send(this.apiResponse.success(planOrder, { meta }));
+      res.status(200).send(this.apiResponse.success(planOrder, { meta }));
+    } else {
+      const planOrders = await prisma.planOrder.findMany(planOrderQuery);
+      res.status(200).send(this.apiResponse.success(planOrders));
+    }
   };
 
   getPlanOrderById: RequestHandler = async (req, res) => {
