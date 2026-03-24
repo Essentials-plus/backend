@@ -161,7 +161,7 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
                     : Utils.getNextLockdownDate(user.zipCode?.lockdownDay!),
                 ).format("dddd, DD/MM/YYYY"),
                 numberOfDays: userPlan.numberOfDays,
-                totalCaloriesInThisWeek: Math.round(userKcal * userPlan.numberOfDays),
+                totalCaloriesInThisWeek: new CalorieCalCulator().totalKcalOfPlanOrder(planOrder.mealsForTheWeek),
                 totalMealsInThisWeek: Math.round(userPlan.numberOfDays * userPlan.mealsPerDay),
                 weekNumber: oneDayBehindWeekNumber,
                 orderId: planOrder.id,

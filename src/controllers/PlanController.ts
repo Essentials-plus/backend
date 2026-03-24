@@ -554,6 +554,8 @@ class PlanController {
 
     if (planOrder) {
       try {
+        const totalCaloriesForPlanOrder = this.calorieCalCulator.totalKcalOfPlanOrder(planOrder.mealsForTheWeek);
+
         // Send welcome email
         sendEmailWithNodemailer(
           "Uw wekelijkse maaltijdbevestiging",
@@ -566,7 +568,7 @@ class PlanController {
                 : Utils.getNextLockdownDate(user.zipCode?.lockdownDay!),
             ).format("dddd, DD/MM/YYYY"),
             numberOfDays: user.plan.numberOfDays,
-            totalCaloriesInThisWeek: Math.round(userKcal * user.plan.numberOfDays),
+            totalCaloriesInThisWeek: totalCaloriesForPlanOrder,
             totalMealsInThisWeek: Math.round(user.plan.numberOfDays * user.plan.mealsPerDay),
             weekNumber: currentWeek,
             orderId: planOrder.id,

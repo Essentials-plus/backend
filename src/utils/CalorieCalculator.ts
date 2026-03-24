@@ -190,6 +190,15 @@ class CalorieCalCulator {
 
     return array[randomIndex];
   };
-}
 
+  totalKcalOfPlanOrder = (planOrder: any) => {
+    const totalKcal = planOrder.reduce((totalKcal: number, day: any) => {
+      const dayKcal = day.meals.reduce((dayTotal: number, meal: any) => {
+        return dayTotal + meal.totalNeedOfKCal;
+      }, 0);
+      return totalKcal + dayKcal;
+    }, 0);
+    return totalKcal;
+  };
+}
 export default CalorieCalCulator;
