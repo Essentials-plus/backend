@@ -92,6 +92,7 @@ enum IngredientUnitType {
   ml
   por
   pc
+  x
 }
 
 model PreparationMethod {
