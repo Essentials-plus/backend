@@ -1,4 +1,5 @@
 import { RequestHandler } from "express";
+import { z } from "zod";
 import { prisma } from "../configs/database";
 import { env } from "../env";
 import { mealWelcomeConfirmationEmailTemplate } from "../templates/emails/meal-welcome-confirmation-email-template";
@@ -437,8 +438,8 @@ class PlanController {
 
   confirmPlanOrder: RequestHandler = async (req, res) => {
     const userId = await this.validators.validateUUID.parseAsync(req.user?.id);
+    const week = z.coerce.number().optional().parse(req.query.week) || Utils.getCurrentWeekNumber();
 
-    // Auto-fix stale confirmOrderWeek if needed
     await Utils.autoFixStaleUserPlan(userId);
 
     const user = await prisma.user.findUnique({ where: { id: userId }, include: { plan: true, zipCode: true } });
@@ -465,9 +466,9 @@ class PlanController {
       }
     }
 
-    const { currentWeek, isAfterLockdownDay } = await Utils.afterLockdownDay(userPlan.userId);
+    const { currentWeek: _currentWeek, isAfterLockdownDay } = await Utils.afterLockdownDay(userPlan.userId);
 
-    console.log({ s: Utils.getNextConfirmOrderWeekNumber(currentWeek) });
+    let currentWeek = _currentWeek;
 
     const isAlreadyPlaceAnOrderForThisWeek = await prisma.planOrder.findFirst({
       where: {
@@ -480,15 +481,34 @@ class PlanController {
       },
     });
 
-    if (isAlreadyPlaceAnOrderForThisWeek) {
+    const isAlreadyPlaceAnOrderForWeekPassedInQuery = await prisma.planOrder.findFirst({
+      where: {
+        week: week,
+        plan: {
+          user: {
+            id: user.id,
+          },
+        },
+      },
+    });
+
+    const isUserTryingToPlaceAnOrderForNextWeek = !isAlreadyPlaceAnOrderForWeekPassedInQuery && week - currentWeek === 1;
+
+    if (isAlreadyPlaceAnOrderForThisWeek && !isUserTryingToPlaceAnOrderForNextWeek) {
       throw new HttpError("U heeft al een bestelling geplaatst voor deze week", 400);
+    }
+
+    if (isUserTryingToPlaceAnOrderForNextWeek && isAlreadyPlaceAnOrderForThisWeek) {
+      currentWeek = week; // Allow placing order for next week if user has already placed an order for current week
     }
 
     if (userPlan.confirmOrderWeek && userPlan.confirmOrderWeek !== currentWeek) {
       throw new HttpError("Bestelling al bevestigd voor deze week", 400);
     }
 
-    if (isAfterLockdownDay) throw new HttpError("Na de lockdown-dag kunt u uw bestelling niet meer bevestigen", 403);
+    if (isAfterLockdownDay && !isUserTryingToPlaceAnOrderForNextWeek) {
+      throw new HttpError("Na de lockdown-dag kunt u uw bestelling niet meer bevestigen", 403);
+    }
 
     const userKcal = this.calorieCalCulator.calculateUserCalorie(user);
     const { shippingAmount, totalPrice } = this.calorieCalCulator.calculateUserPlanPrice(user);

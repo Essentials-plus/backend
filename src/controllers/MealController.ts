@@ -582,9 +582,19 @@ class MealController {
       })
       .filter((v) => v != null);
 
-    const isAlreadyPlaceAnOrderForThisWeek = await prisma.planOrder.findFirst({
+    const isAlreadyPlaceAnOrderForActiveWeek = await prisma.planOrder.findFirst({
       where: {
         week: activeWeek,
+        plan: {
+          user: {
+            id: user.id,
+          },
+        },
+      },
+    });
+    const isAlreadyPlaceAnOrderForCurrentWeek = await prisma.planOrder.findFirst({
+      where: {
+        week: currentWeek,
         plan: {
           user: {
             id: user.id,
@@ -598,20 +608,13 @@ class MealController {
     const date = getNetherlandsDate().isoWeek(week).isoWeekday(user.zipCode?.lockdownDay!).endOf("day");
     const now = getNetherlandsDate();
 
-    const isOrder = currentWeek === currentUserOrderWeek && !isAlreadyPlaceAnOrderForThisWeek && now.isBefore(date);
+    const isEligibleForNextWeeksOrderPlacement =
+      isAlreadyPlaceAnOrderForCurrentWeek && currentUserOrderWeek && currentWeek + 1 === currentUserOrderWeek && activeWeek === currentUserOrderWeek;
 
-    // console.log({
-    //   isBefore: now.isBefore(date),
-    //   date: date.toString(),
-    //   now: now.toString(),
-    //   week: now.isoWeek(),
-    //   finalWeek,
-    //   userOrderedWeek,
-    //   isAlreadyPlaceAnOrderForThisWeek,
-    //   isOrder,
-    // });
+    const isOrder =
+      (currentWeek === currentUserOrderWeek && !isAlreadyPlaceAnOrderForActiveWeek && now.isBefore(date)) || isEligibleForNextWeeksOrderPlacement;
 
-    res.status(200).send(this.apiResponse.success(userMeals, { isOrder, orderHistory: isAlreadyPlaceAnOrderForThisWeek }));
+    res.status(200).send(this.apiResponse.success(userMeals, { isOrder, orderHistory: isAlreadyPlaceAnOrderForActiveWeek }));
   };
 
   getManualWeeklyMeals: RequestHandler = async (req, res) => {
