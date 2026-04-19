@@ -498,8 +498,8 @@ class PlanController {
       throw new HttpError("U heeft al een bestelling geplaatst voor deze week", 400);
     }
 
-    if (isUserTryingToPlaceAnOrderForNextWeek && isAlreadyPlaceAnOrderForThisWeek) {
-      currentWeek = week; // Allow placing order for next week if user has already placed an order for current week
+    if (isUserTryingToPlaceAnOrderForNextWeek && (isAlreadyPlaceAnOrderForThisWeek || isAfterLockdownDay)) {
+      currentWeek = week; // Allow placing order for next week if user has already placed an order for current week OR lockdown day has passed
     }
 
     if (userPlan.confirmOrderWeek && userPlan.confirmOrderWeek !== currentWeek) {
@@ -547,8 +547,11 @@ class PlanController {
       await Utils.sleep(100);
     }
 
-    const lockdownDate =
-      getNetherlandsDate().isoWeekday() === user.zipCode?.lockdownDay!
+    // When lockdown has already passed (including today being the lockdown day), use the NEXT week's
+    // lockdown date since the order is being placed for next week.
+    const lockdownDate = isAfterLockdownDay
+      ? Utils.getNextLockdownDate(user.zipCode?.lockdownDay!)
+      : getNetherlandsDate().isoWeekday() === user.zipCode?.lockdownDay!
         ? getNetherlandsDate().toDate()
         : Utils.getNextLockdownDate(user.zipCode?.lockdownDay!);
     const deliveryDate = Utils.getNextDeliveryDate(lockdownDate).toDate();
@@ -590,11 +593,7 @@ class PlanController {
           user.email,
           weeklyMealConfirmationEmailTemplate({
             user: user,
-            deliveryDate: Utils.getNextDeliveryDate(
-              getNetherlandsDate().isoWeekday() === user.zipCode?.lockdownDay!
-                ? getNetherlandsDate().toDate()
-                : Utils.getNextLockdownDate(user.zipCode?.lockdownDay!),
-            ).format("dddd, DD/MM/YYYY"),
+            deliveryDate: Utils.getNextDeliveryDate(lockdownDate).format("dddd, DD/MM/YYYY"),
             numberOfDays: user.plan.numberOfDays,
             totalCaloriesInThisWeek: totalCaloriesForPlanOrder,
             totalMealsInThisWeek: Math.round(user.plan.numberOfDays * user.plan.mealsPerDay),
@@ -751,6 +750,12 @@ class PlanController {
 
     const orderWeek = order.week;
     const planId = order.plan.id;
+    const planUserId = order.plan.userId;
+
+    // If lockdown day has already passed for this order's week, the user can no longer
+    // re-order for that week. Reset confirmOrderWeek to the NEXT week so they can order for next week.
+    const { isAfterLockdownDay: lockdownPassedForOrderWeek } = await Utils.afterLockdownDay(planUserId);
+    const newConfirmOrderWeek = lockdownPassedForOrderWeek ? Utils.getNextConfirmOrderWeekNumber(orderWeek) : orderWeek;
 
     // Delete the order and reset confirmOrderWeek in a transaction
     await prisma.$transaction([
@@ -760,17 +765,18 @@ class PlanController {
       prisma.userPlan.update({
         where: { id: planId },
         data: {
-          confirmOrderWeek: orderWeek,
+          confirmOrderWeek: newConfirmOrderWeek,
         },
       }),
     ]);
 
+    const canReorderForWeek = lockdownPassedForOrderWeek ? newConfirmOrderWeek : orderWeek;
     res
       .status(200)
       .send(
         this.apiResponse.success(
           { deletedOrderId: id, orderWeek },
-          { message: "Bestelling succesvol verwijderd. Gebruiker kan nu opnieuw bestellen voor week " + orderWeek },
+          { message: "Bestelling succesvol verwijderd. Gebruiker kan nu opnieuw bestellen voor week " + canReorderForWeek },
         ),
       );
   };
