@@ -75,9 +75,17 @@ export const runAutoConfirmOrder = async ({ isTriggeredManually = false }: { isT
           throw new HttpError("Bestelling al bevestigd voor deze week", 400);
         }
 
+        const oneDayBehindYear = oneDayBehind.year();
+        const yearStart = new Date(`${oneDayBehindYear}-01-01T00:00:00.000Z`);
+        const yearEnd = new Date(`${oneDayBehindYear}-12-31T23:59:59.999Z`);
+
         const isAlreadyPlaceAnOrderForThisWeek = await prisma.planOrder.findFirst({
           where: {
             week: oneDayBehindWeekNumber,
+            createdAt: {
+              gte: yearStart,
+              lte: yearEnd,
+            },
             plan: {
               user: {
                 id: user.id,

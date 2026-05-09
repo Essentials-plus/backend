@@ -582,9 +582,17 @@ class MealController {
       })
       .filter((v) => v != null);
 
+    const currentYear = getNetherlandsDate().year();
+    const yearStart = new Date(`${currentYear}-01-01T00:00:00.000Z`);
+    const yearEnd = new Date(`${currentYear}-12-31T23:59:59.999Z`);
+
     const isAlreadyPlaceAnOrderForActiveWeek = await prisma.planOrder.findFirst({
       where: {
         week: activeWeek,
+        createdAt: {
+          gte: yearStart,
+          lte: yearEnd,
+        },
         plan: {
           user: {
             id: user.id,
@@ -592,9 +600,14 @@ class MealController {
         },
       },
     });
+
     const isAlreadyPlaceAnOrderForCurrentWeek = await prisma.planOrder.findFirst({
       where: {
         week: currentWeek,
+        createdAt: {
+          gte: yearStart,
+          lte: yearEnd,
+        },
         plan: {
           user: {
             id: user.id,

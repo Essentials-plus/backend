@@ -3,7 +3,7 @@ import { compare, hash } from "bcrypt";
 import { RequestHandler } from "express";
 import { z } from "zod";
 import { prisma } from "../configs/database";
-import Utils from "../utils";
+import Utils, { getNetherlandsDate } from "../utils";
 import ApiResponse from "../utils/ApiResponse";
 import CalorieCalCulator from "../utils/CalorieCalculator";
 import HttpError from "../utils/HttpError";
@@ -157,10 +157,17 @@ class UserController {
       });
     }
     const currentWeekNumber = Utils.getCurrentWeekNumber();
+    const currentYear = getNetherlandsDate().year();
+    const yearStart = new Date(`${currentYear}-01-01T00:00:00.000Z`);
+    const yearEnd = new Date(`${currentYear}-12-31T23:59:59.999Z`);
 
     const isAlreadyPlaceAnOrderForThisWeek = await prisma.planOrder.findFirst({
       where: {
         week: currentWeekNumber,
+        createdAt: {
+          gte: yearStart,
+          lte: yearEnd,
+        },
         plan: {
           userId: findUser.id,
         },
