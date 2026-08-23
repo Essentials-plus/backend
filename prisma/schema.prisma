@@ -165,7 +165,7 @@ model OrderItem {
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   name        String
-  price       Int
+  price       Float
   quantity    Int
   taxPercent  TaxPercent?
   attributes  Json?
@@ -250,8 +250,8 @@ model Product {
   slug                            String      @unique
   description                     String?
   longDescription                 String?
-  salePrice                       Int?
-  regularPrice                    Int?
+  salePrice                       Float?
+  regularPrice                    Float?
   images                          String[]
   stock                           Int?
   lowStockThreshold               Int?
@@ -262,8 +262,8 @@ model Product {
   taxPercent                      TaxPercent?
   linkedToId                      String?
   attributesInfo                  Json?
-  lowestPrice                     Int?
-  highestPrice                    Int?
+  lowestPrice                     Float?
+  highestPrice                    Float?
 
   linkedProducts           Product[]                  @relation("LinkedProducts")
   linkedTo                 Product?                   @relation("LinkedProducts", fields: [linkedToId], references: [id])
@@ -359,8 +359,8 @@ model ProductVariation {
 
   termIds String[]
 
-  salePrice              Int?
-  regularPrice           Int?
+  salePrice              Float?
+  regularPrice           Float?
   stock                  Int?
   lowStockThreshold      Int?
   image                  String?
